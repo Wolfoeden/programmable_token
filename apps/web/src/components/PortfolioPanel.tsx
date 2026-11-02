@@ -1,0 +1,93 @@
+import { api } from "../api";
+import { ada } from "../format";
+import { usePoll } from "../hooks";
+import { errorText, t } from "../i18n";
+import type { MarketDto } from "../types";
+import type { AppWallet } from "../wallet";
+
+export interface PortfolioPanelProps {
+  wallet: AppWallet;
+  busy: boolean;
+  onClaim: (marketId: string) => void;
+  onCancel: (orderRef: string) => void;
+  onOpenMarket: (m: MarketDto) => void;
+  onClose: () => void;
+}
+
+export function PortfolioPanel(p: PortfolioPanelProps) {
+  const { data, error } = usePoll(async () => api.portfolio(await p.wallet.payload()), 10_000, [p.wallet.id]);
+  return (
+    <aside className="panel" aria-label={t.portfolio}>
+      <div className="panel-head">
+        <div>
+          <h2>{t.portfolio}</h2>
+          <div className="sub num">
+            {p.wallet.name}
+            {data && ` · ${t.balance} ${ada(data.lovelace)}`}
+          </div>
+        </div>
+        <button type="button" className="icon-btn" onClick={p.onClose} aria-label={t.close}>
+          ✕
+        </button>
+      </div>
+      <div className="panel-body">
+        {error !== null && <div className="muted">{errorText(error)}</div>}
+        {data && data.positions.length === 0 && data.orders.length === 0 && <div className="muted">{t.noPositions}</div>}
+        {data?.positions.map((pos) => {
+          const m = pos.market;
+          const claimable = BigInt(pos.claimable);
+          return (
+            <div className="market" key={pos.marketId}>
+              <div className="market-head">
+                <h3>{m ? m.title.de : pos.marketId.slice(0, 12)}</h3>
+                <div className="list">
+                  {pos.holdings.map((h) => (
+                    <div key={h.outcome} className="quote">
+                      <span>
+                        {m?.labels.de[h.outcome] ?? `#${h.outcome}`} · <span className="num">{ada(h.quantity)}</span>
+                      </span>
+                      {m?.phase === "open" || m?.phase === "closed" ? (
+                        <span className="num muted">
+                          {t.ifWins} {ada(pos.ifWins[h.outcome] ?? "0")}
+                        </span>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+                <div className="actions">
+                  {m && (
+                    <button type="button" className="btn small flat" onClick={() => p.onOpenMarket(m)}>
+                      Markt öffnen
+                    </button>
+                  )}
+                  {m && (m.phase === "resolved" || m.phase === "void") && (
+                    <button type="button" className="btn small primary" disabled={p.busy} onClick={() => p.onClaim(pos.marketId)}>
+                      {claimable > 0n ? `${t.claim} ${ada(claimable)}` : "Token einlösen"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        {data && data.orders.length > 0 && <div className="section-title">{t.openOrders}</div>}
+        <div className="list">
+          {data?.orders.map((o) => (
+            <div className="row" key={o.ref}>
+              <span className="time">{o.order.kind === "bet" ? "Wette" : "Auszahlung"}</span>
+              <div className="what">
+                <div className="t num">
+                  {o.order.kind === "bet" ? `${ada(o.order.stake)} auf #${o.order.outcome}` : "Positionen eingereicht"}
+                </div>
+                <div className="s">{o.marketId.slice(0, 12)}…</div>
+              </div>
+              <button type="button" className="btn small flat" disabled={p.busy} onClick={() => p.onCancel(o.ref)}>
+                {t.cancelOrder}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </aside>
+  );
+}

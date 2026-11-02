@@ -1,0 +1,329 @@
+import { useEffect, useRef } from "react";
+import { Map as MlMap, NavigationControl, setWorkerUrl, type GeoJSONSource, type MapMouseEvent, type MapGeoJSONFeature } from "maplibre-gl";
+import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
+import type { Feature as GeoFeature, FeatureCollection, Point } from "geojson";
+import "maplibre-gl/dist/maplibre-gl.css";
+import { destinationPoint, distanceKm, KM_PER_NM } from "@flightradar/core/geo";
+import { api } from "../api";
+import type { AircraftDto, AirportDto } from "../types";
+import { greatCircle } from "./greatCircle";
+import { planeImage, ringImage } from "./icons";
+
+// The worker is a standalone module; point MapLibre at the bundled copy so it
+// works both with Vite's dependency pre-bundling and in production builds.
+setWorkerUrl(workerUrl);
+
+const STYLE_URL = "https://tiles.openfreemap.org/styles/dark";
+const MAX_RADIUS_NM = 250;
+const RACE_COLORS = ["#5aa9ff", "#ff8a3d", "#c084fc", "#3ddc97"];
+
+export interface MapViewProps {
+  selectedHex: string | null;
+  raceHexes: string[];
+  destination: AirportDto | null;
+  onAircraftClick: (hex: string) => void;
+  onAirportClick: (icao: string) => void;
+  onBackgroundClick: () => void;
+  onAircraftUpdate: (list: AircraftDto[]) => void;
+  onZoomHint: (show: boolean) => void;
+  flyTo: { lat: number; lon: number; zoom?: number; key: number } | null;
+}
+
+type Feature = GeoFeature<Point, Record<string, unknown>>;
+
+function extrapolate(a: AircraftDto, now: number): [number, number] {
+  if (a.onGround || a.groundSpeedKt === undefined || a.trackDeg === undefined) return [a.lon, a.lat];
+  const sec = Math.min(Math.max(0, (now - a.timestamp) / 1000), 60);
+  const p = destinationPoint(a, a.trackDeg, (a.groundSpeedKt * KM_PER_NM * sec) / 3600);
+  return [p.lon, p.lat];
+}
+
+export function MapView(props: MapViewProps) {
+  const container = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<MlMap | null>(null);
+  const aircraft = useRef<Map<string, AircraftDto>>(new Map());
+  const trail = useRef<{ hex: string | null; points: [number, number][] }>({ hex: null, points: [] });
+  const propsRef = useRef(props);
+  propsRef.current = props;
+
+  // ## Map setup
+  useEffect(() => {
+    const map = new MlMap({
+      container: container.current!,
+      style: STYLE_URL,
+      center: [9.0, 50.0],
+      zoom: 5.6,
+      attributionControl: false,
+      maxPitch: 0,
+      dragRotate: false,
+    });
+    mapRef.current = map;
+    if (import.meta.env.DEV) (window as unknown as { __map: MlMap }).__map = map;
+    map.touchZoomRotate.disableRotation();
+    map.addControl(new NavigationControl({ showCompass: false }), "bottom-right");
+
+    map.on("load", async () => {
+      map.addImage("plane", planeImage(64), { sdf: true, pixelRatio: 2 });
+      map.addImage("ring", ringImage(64), { sdf: true, pixelRatio: 2 });
+      const empty: FeatureCollection = { type: "FeatureCollection", features: [] };
+      map.addSource("aircraft", { type: "geojson", data: empty });
+      map.addSource("trail", { type: "geojson", data: empty });
+      map.addSource("route", { type: "geojson", data: empty });
+      map.addSource("airports", { type: "geojson", data: empty });
+
+      map.addLayer({
+        id: "route",
+        type: "line",
+        source: "route",
+        paint: { "line-color": "#ffc53d", "line-width": 1.5, "line-opacity": 0.6, "line-dasharray": [2, 2] },
+      });
+      map.addLayer({
+        id: "trail",
+        type: "line",
+        source: "trail",
+        paint: { "line-color": "#e8ecf1", "line-width": 2, "line-opacity": 0.7 },
+      });
+      map.addLayer({
+        id: "airports",
+        type: "circle",
+        source: "airports",
+        minzoom: 4,
+        paint: {
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 2.5, 9, 6],
+          "circle-color": "#0b0d10",
+          "circle-stroke-color": "#6f7a88",
+          "circle-stroke-width": 1.5,
+        },
+      });
+      map.addLayer({
+        id: "airport-labels",
+        type: "symbol",
+        source: "airports",
+        minzoom: 6.5,
+        layout: { "text-field": ["get", "iata"], "text-size": 11, "text-offset": [0, 1.1], "text-font": ["Noto Sans Regular"] },
+        paint: { "text-color": "#a3adba", "text-halo-color": "#0b0d10", "text-halo-width": 1.2 },
+      });
+      map.addLayer({
+        id: "market-rings",
+        type: "symbol",
+        source: "aircraft",
+        filter: [">", ["get", "markets"], 0],
+        layout: {
+          "icon-image": "ring",
+          "icon-size": ["interpolate", ["linear"], ["zoom"], 4, 0.7, 10, 1.1],
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true,
+        },
+        paint: { "icon-color": "#ffc53d", "icon-opacity": 0.95 },
+      });
+      map.addLayer({
+        id: "aircraft-ground",
+        type: "symbol",
+        source: "aircraft",
+        minzoom: 8,
+        filter: ["all", ["==", ["get", "ground"], 1], ["==", ["get", "sel"], 0]],
+        layout: {
+          "icon-image": "plane",
+          "icon-rotate": ["get", "track"],
+          "icon-rotation-alignment": "map",
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true,
+          "icon-size": ["interpolate", ["linear"], ["zoom"], 8, 0.5, 12, 0.8],
+        },
+        paint: { "icon-color": "#7d8794", "icon-opacity": 0.8 },
+      });
+      map.addLayer({
+        id: "aircraft",
+        type: "symbol",
+        source: "aircraft",
+        filter: ["any", ["==", ["get", "ground"], 0], ["==", ["get", "sel"], 1]],
+        layout: {
+          "icon-image": "plane",
+          "icon-rotate": ["get", "track"],
+          "icon-rotation-alignment": "map",
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true,
+          "icon-size": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            4,
+            ["*", 0.55, ["case", ["==", ["get", "sel"], 1], 1.45, ["==", ["get", "heavy"], 1], 1.1, 0.85]],
+            10,
+            ["*", 0.95, ["case", ["==", ["get", "sel"], 1], 1.45, ["==", ["get", "heavy"], 1], 1.1, 0.85]],
+          ],
+          "symbol-sort-key": ["get", "sort"],
+        },
+        paint: {
+          "icon-color": [
+            "case",
+            ["==", ["get", "sel"], 1],
+            "#ffffff",
+            [">=", ["get", "race"], 0],
+            ["match", ["get", "race"], 0, RACE_COLORS[0]!, 1, RACE_COLORS[1]!, 2, RACE_COLORS[2]!, RACE_COLORS[3]!],
+            ["==", ["get", "ground"], 1],
+            "#7d8794",
+            ["interpolate", ["linear"], ["get", "alt"], 0, "#ff9f43", 8000, "#feca57", 20000, "#48dbfb", 32000, "#54a0ff", 42000, "#a29bfe"],
+          ],
+          "icon-halo-color": "rgba(0,0,0,0.6)",
+          "icon-halo-width": 1,
+        },
+      });
+      map.addLayer({
+        id: "aircraft-labels",
+        type: "symbol",
+        source: "aircraft",
+        minzoom: 8,
+        layout: {
+          "text-field": ["get", "cs"],
+          "text-size": 11,
+          "text-offset": [0, 1.6],
+          "text-font": ["Noto Sans Regular"],
+          "text-optional": true,
+        },
+        paint: { "text-color": "#e8ecf1", "text-halo-color": "#0b0d10", "text-halo-width": 1.2 },
+      });
+
+      const { AIRPORTS } = await import("@flightradar/core/airports");
+      (map.getSource("airports") as GeoJSONSource).setData({
+        type: "FeatureCollection",
+        features: AIRPORTS.filter((a) => a.size === 2).map((a) => ({
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [a.lon, a.lat] },
+          properties: { icao: a.icao, iata: a.iata || a.icao, name: a.name },
+        })),
+      });
+      void poll();
+    });
+
+    map.on("click", (e: MapMouseEvent) => {
+      const hits = map.queryRenderedFeatures(
+        [
+          [e.point.x - 8, e.point.y - 8],
+          [e.point.x + 8, e.point.y + 8],
+        ],
+        { layers: ["aircraft", "aircraft-ground", "airports"] },
+      );
+      const plane = hits.find((f: MapGeoJSONFeature) => f.layer.id === "aircraft" || f.layer.id === "aircraft-ground");
+      if (plane) return propsRef.current.onAircraftClick(String(plane.properties.hex));
+      const airport = hits.find((f: MapGeoJSONFeature) => f.layer.id === "airports");
+      if (airport) return propsRef.current.onAirportClick(String(airport.properties.icao));
+      propsRef.current.onBackgroundClick();
+    });
+    for (const layer of ["aircraft", "aircraft-ground", "airports"]) {
+      map.on("mouseenter", layer, () => (map.getCanvas().style.cursor = "pointer"));
+      map.on("mouseleave", layer, () => (map.getCanvas().style.cursor = ""));
+    }
+
+    // ## Data polling
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let inflight = false;
+    async function poll() {
+      if (inflight) return;
+      inflight = true;
+      try {
+        const c = map.getCenter();
+        const ne = map.getBounds().getNorthEast();
+        const radius = distanceKm({ lat: c.lat, lon: c.lng }, { lat: ne.lat, lon: ne.lng }) / KM_PER_NM;
+        propsRef.current.onZoomHint(radius > MAX_RADIUS_NM * 1.4);
+        const res = await api.aircraft(c.lat, c.lng, Math.min(MAX_RADIUS_NM, Math.max(10, radius)));
+        const next = new Map<string, AircraftDto>();
+        for (const a of res.aircraft) next.set(a.hex, a);
+        // keep the selected aircraft even if it left the query area
+        const sel = propsRef.current.selectedHex;
+        if (sel && !next.has(sel) && aircraft.current.has(sel)) next.set(sel, aircraft.current.get(sel)!);
+        aircraft.current = next;
+        const s = sel ? next.get(sel) : undefined;
+        if (s && trail.current.hex === sel) trail.current.points.push([s.lon, s.lat]);
+        propsRef.current.onAircraftUpdate([...next.values()]);
+        render();
+      } catch {
+        // keep showing the last state; next poll retries
+      } finally {
+        inflight = false;
+        clearTimeout(timer);
+        timer = setTimeout(poll, 5000);
+      }
+    }
+    let moveTimer: ReturnType<typeof setTimeout> | undefined;
+    map.on("moveend", () => {
+      clearTimeout(moveTimer);
+      moveTimer = setTimeout(() => void poll(), 350);
+    });
+
+    // Dead reckoning between polls keeps the motion smooth.
+    const tick = setInterval(render, 1000);
+
+    function render() {
+      const src = map.getSource("aircraft") as GeoJSONSource | undefined;
+      if (!src) return;
+      const now = Date.now();
+      const { selectedHex, raceHexes } = propsRef.current;
+      const features: Feature[] = [];
+      let selectedPos: [number, number] | null = null;
+      for (const a of aircraft.current.values()) {
+        const pos = extrapolate(a, now);
+        const sel = a.hex === selectedHex ? 1 : 0;
+        if (sel) selectedPos = pos;
+        const race = raceHexes.indexOf(a.hex);
+        features.push({
+          type: "Feature",
+          geometry: { type: "Point", coordinates: pos },
+          properties: {
+            hex: a.hex,
+            cs: a.callsign ?? a.registration ?? a.hex,
+            track: a.trackDeg ?? 0,
+            alt: a.onGround ? 0 : (a.altitudeFt ?? 0),
+            ground: a.onGround ? 1 : 0,
+            heavy: a.type && /^(A3[3-8]|A35|B7[4-8]|B77|B78|A34)/.test(a.type) ? 1 : 0,
+            markets: a.markets ?? 0,
+            sel,
+            race,
+            sort: sel ? 3 : race >= 0 ? 2 : a.markets ? 1 : 0,
+          },
+        });
+      }
+      src.setData({ type: "FeatureCollection", features });
+
+      const t = trail.current;
+      (map.getSource("trail") as GeoJSONSource).setData({
+        type: "FeatureCollection",
+        features:
+          t.hex === selectedHex && t.points.length > 0 && selectedPos
+            ? [{ type: "Feature", geometry: { type: "LineString", coordinates: [...t.points, selectedPos] }, properties: {} }]
+            : [],
+      });
+      const dest = propsRef.current.destination;
+      (map.getSource("route") as GeoJSONSource).setData({
+        type: "FeatureCollection",
+        features:
+          dest && selectedPos
+            ? [{ type: "Feature", geometry: { type: "LineString", coordinates: greatCircle({ lon: selectedPos[0], lat: selectedPos[1] }, dest) }, properties: {} }]
+            : [],
+      });
+    }
+
+    (mapRef as { render?: () => void }).render = render;
+    return () => {
+      clearInterval(tick);
+      clearTimeout(timer);
+      map.remove();
+      mapRef.current = null;
+    };
+  }, []);
+
+  // Selection changes: reset the trail and redraw.
+  useEffect(() => {
+    const sel = props.selectedHex;
+    const a = sel ? aircraft.current.get(sel) : undefined;
+    trail.current = { hex: sel, points: a ? [[a.lon, a.lat]] : [] };
+    (mapRef as { render?: () => void }).render?.();
+  }, [props.selectedHex, props.raceHexes.join(","), props.destination?.icao]);
+
+  useEffect(() => {
+    if (!props.flyTo || !mapRef.current) return;
+    mapRef.current.flyTo({ center: [props.flyTo.lon, props.flyTo.lat], zoom: props.flyTo.zoom ?? Math.max(mapRef.current.getZoom(), 7) });
+  }, [props.flyTo?.key]);
+
+  return <div ref={container} className="map" />;
+}

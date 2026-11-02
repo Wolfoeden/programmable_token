@@ -1,0 +1,103 @@
+/**
+ * Live aircraft positions from an ADS-B aggregator speaking the readsb v2
+ * API (adsb.lol by default; its data is ODbL licensed, attribution required).
+ *
+ * Two separate request budgets: map views (many clients, cached and
+ * quantised) and flight tracking for the oracle, which must never starve.
+ * On HTTP 429 map views back off and serve the last good snapshot.
+ */
+import { fromReadsb, type Aircraft, type ReadsbAircraft } from "@flightradar/core";
+import { fetchJson, HttpError, log, Throttle, TtlCache } from "./util.js";
+
+interface ReadsbResponse {
+  ac?: ReadsbAircraft[];
+  now?: number;
+}
+
+export interface AdsbSource {
+  area(lat: number, lon: number, radiusNm: number): Promise<Aircraft[]>;
+  /** Lookup for user-facing requests (shares the map budget). */
+  byHex(hexes: string[]): Promise<Aircraft[]>;
+  /** Lookup for the oracle's flight tracker (own budget, fallback source). */
+  track(hexes: string[]): Promise<Aircraft[]>;
+  byCallsign(callsign: string): Promise<Aircraft[]>;
+}
+
+const RADII = [25, 50, 100, 150, 250];
+
+export class AdsbClient implements AdsbSource {
+  private areaCache = new TtlCache<Promise<Aircraft[]>>(5000, 500);
+  private lastGood = new TtlCache<Aircraft[]>(90_000, 500);
+  private mapThrottle = new Throttle(2);
+  private trackThrottle = new Throttle(1);
+  private backoffUntil = 0;
+
+  constructor(
+    private baseUrl: string,
+    private fallbackUrl?: string,
+  ) {}
+
+  private async get(base: string, path: string, throttle: Throttle): Promise<Aircraft[]> {
+    await throttle.wait();
+    const res = await fetchJson<ReadsbResponse>(`${base}${path}`);
+    const now = res.now ?? Date.now();
+    return (res.ac ?? []).map((a) => fromReadsb(a, now)).filter((a): a is Aircraft => a !== null);
+  }
+
+  private rateLimited(e: unknown): boolean {
+    return e instanceof HttpError && e.message.includes("HTTP 429");
+  }
+
+  /** Aircraft within `radiusNm` of a point. Keys are quantised for caching. */
+  area(lat: number, lon: number, radiusNm: number): Promise<Aircraft[]> {
+    const r = RADII.find((x) => x >= radiusNm) ?? 250;
+    const step = r <= 50 ? 0.25 : 0.5;
+    const qlat = Math.round(lat / step) * step;
+    const qlon = Math.round(lon / step) * step;
+    const key = `${qlat.toFixed(2)},${qlon.toFixed(2)},${r}`;
+    const hit = this.areaCache.get(key);
+    if (hit) return hit;
+    if (Date.now() < this.backoffUntil) return Promise.resolve(this.lastGood.get(key) ?? []);
+    const p = this.get(this.baseUrl, `/v2/point/${qlat.toFixed(3)}/${qlon.toFixed(3)}/${r}`, this.mapThrottle)
+      .then((list) => {
+        this.lastGood.set(key, list);
+        return list;
+      })
+      .catch((e) => {
+        if (this.rateLimited(e)) {
+          this.backoffUntil = Date.now() + 15_000;
+          log.warn("adsb rate limited, map views back off for 15 s");
+        }
+        return this.lastGood.get(key) ?? [];
+      });
+    this.areaCache.set(key, p);
+    return p;
+  }
+
+  private async hexes(hexes: string[], throttle: Throttle, allowFallback: boolean): Promise<Aircraft[]> {
+    const unique = [...new Set(hexes.map((h) => h.toLowerCase()).filter((h) => /^[0-9a-f]{6}$/.test(h)))];
+    const out: Aircraft[] = [];
+    for (let i = 0; i < unique.length; i += 40) {
+      const path = `/v2/hex/${unique.slice(i, i + 40).join(",")}`;
+      try {
+        out.push(...(await this.get(this.baseUrl, path, throttle)));
+      } catch (e) {
+        if (!allowFallback || !this.fallbackUrl) throw e;
+        out.push(...(await this.get(this.fallbackUrl, path, throttle)));
+      }
+    }
+    return out;
+  }
+
+  byHex(hexes: string[]): Promise<Aircraft[]> {
+    return this.hexes(hexes, this.mapThrottle, false);
+  }
+
+  track(hexes: string[]): Promise<Aircraft[]> {
+    return this.hexes(hexes, this.trackThrottle, true);
+  }
+
+  byCallsign(callsign: string): Promise<Aircraft[]> {
+    return this.get(this.baseUrl, `/v2/callsign/${encodeURIComponent(callsign.trim().toUpperCase())}`, this.trackThrottle);
+  }
+}

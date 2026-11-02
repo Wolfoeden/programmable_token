@@ -1,0 +1,209 @@
+/**
+ * Creates markets on request. The operator seeds every market with the
+ * status-quo probabilities from the proposal, so the first price a bettor
+ * sees is the model's fair price. Seeds are bets like any other: the
+ * operator holds the seed's position tokens and can win or lose them.
+ */
+import {
+  flightKey,
+  flightsOf,
+  outcomeLabels,
+  parimutuel,
+  proposeCancellation,
+  proposeDelayAirborne,
+  proposeDelayScheduled,
+  proposeLandingBefore,
+  proposeRace,
+  questionTitle,
+  tokenLabel,
+  type FlightRef,
+  type Proposal,
+  type ProposalResult,
+  type Question,
+} from "@flightradar/core";
+import { buildCreateMarket, type FtMetadata } from "@flightradar/chain";
+import type { AdsbSource } from "./adsb.js";
+import type { ChainContext } from "./chain.js";
+import type { ChainIndex } from "./chainIndex.js";
+import type { Config } from "./config.js";
+import type { RouteSource } from "./routes.js";
+import type { ScheduleProvider } from "./schedule.js";
+import type { MarketMeta, Store } from "./store.js";
+import type { Tracker } from "./tracker.js";
+import { HttpError, log } from "./util.js";
+
+const ADA = 1_000_000n;
+const DAY = 86_400_000;
+
+export interface CreatedMarket {
+  marketId: string;
+  txHash?: string;
+  existing: boolean;
+}
+
+function sameFlights(a: Question, b: Question): boolean {
+  if (a.kind !== b.kind) return false;
+  const ka = flightsOf(a).map(flightKey).sort().join(",");
+  const kb = flightsOf(b).map(flightKey).sort().join(",");
+  if (ka !== kb) return false;
+  if (a.kind === "delay" && b.kind === "delay") return a.minutes === b.minutes;
+  return true;
+}
+
+function ticker(q: Question, outcome: number): string {
+  const name = (f: FlightRef) => (f.flightNumber || f.callsign).slice(0, 7);
+  if (q.kind === "race") return name(q.flights[outcome]!).slice(0, 9);
+  return `${name(flightsOf(q)[0]!)}${outcome === 0 ? "Y" : "N"}`.slice(0, 9);
+}
+
+export class MarketMaker {
+  private creating = new Map<string, MarketMeta>();
+
+  constructor(
+    private cfg: Config,
+    private ctx: ChainContext,
+    private index: ChainIndex,
+    private adsb: AdsbSource,
+    private routes: RouteSource,
+    private schedule: ScheduleProvider | undefined,
+    private store: Store,
+    private tracker: Tracker,
+  ) {}
+
+  /** Markets submitted but not yet visible in the chain index. */
+  pending(): MarketMeta[] {
+    for (const id of this.creating.keys()) if (this.index.market(id)) this.creating.delete(id);
+    const cutoff = Date.now() - 10 * 60_000;
+    for (const [id, m] of this.creating) if (m.createdAt < cutoff) this.creating.delete(id);
+    return [...this.creating.values()];
+  }
+
+  private findExisting(q: Question): string | undefined {
+    const now = this.ctx.now();
+    const open = this.index.markets.find(
+      (m) => m.datum.state.kind === "open" && Number(m.datum.closeTime) > now && sameFlights(m.datum.question, q),
+    );
+    if (open) return open.datum.marketId;
+    return [...this.creating.values()].find((m) => sameFlights(m.question, q))?.marketId;
+  }
+
+  async flightFor(hex: string): Promise<{ flight: FlightRef; ac: Awaited<ReturnType<AdsbSource["byHex"]>>[number] }> {
+    const [ac] = await this.adsb.byHex([hex]);
+    if (!ac) throw new HttpError(404, "aircraft_not_found", "Flugzeug gerade nicht sichtbar");
+    if (!ac.callsign) throw new HttpError(422, "no_callsign", "Kein Rufzeichen empfangen");
+    const route = await this.routes.lookup(ac.callsign);
+    if (!route) throw new HttpError(422, "unknown_route", "Route unbekannt");
+    return {
+      ac,
+      flight: { callsign: ac.callsign, flightNumber: route.flightNumber, icao24: ac.hex, origin: route.origin, destination: route.destination },
+    };
+  }
+
+  private unwrap(r: ProposalResult): Proposal {
+    if (!r.ok) throw new HttpError(422, r.error);
+    return r.proposal;
+  }
+
+  async landing(hex: string): Promise<CreatedMarket> {
+    const { ac, flight } = await this.flightFor(hex);
+    const proposal = this.unwrap(proposeLandingBefore(ac, flight, this.ctx.now()));
+    this.tracker.ingest(flight, ac);
+    return this.create(proposal, BigInt(this.cfg.SEED_ADA) * ADA, BigInt(this.cfg.MAX_TOTAL_ADA) * ADA, false);
+  }
+
+  async race(hexes: string[]): Promise<CreatedMarket> {
+    if (hexes.length < 2 || hexes.length > 4) throw new HttpError(422, "race_size", "Ein Rennen braucht 2 bis 4 Flüge");
+    const entries = [];
+    for (const hex of hexes) entries.push(await this.flightFor(hex));
+    const proposal = this.unwrap(proposeRace(entries, this.ctx.now()));
+    entries.forEach((e) => this.tracker.ingest(e.flight, e.ac));
+    return this.create(proposal, BigInt(this.cfg.SEED_ADA) * ADA, BigInt(this.cfg.MAX_TOTAL_ADA) * ADA, false);
+  }
+
+  async delayAirborne(hex: string, minutes: number): Promise<CreatedMarket> {
+    if (!this.schedule) throw new HttpError(501, "schedule_unavailable", "Kein Flugplan-Anbieter konfiguriert");
+    const { ac, flight } = await this.flightFor(hex);
+    const sched = await this.schedule.airborne(flight, this.ctx.now(), ac);
+    if (!sched) throw new HttpError(422, "schedule_not_found", "Planzeiten für diesen Flug nicht gefunden");
+    const proposal = this.unwrap(proposeDelayAirborne(ac, flight, sched.scheduledArrival, minutes, this.ctx.now()));
+    this.tracker.ingest(flight, ac);
+    return this.create(proposal, BigInt(this.cfg.SEED_ADA) * ADA, BigInt(this.cfg.MAX_TOTAL_ADA) * ADA, this.schedule.simulated);
+  }
+
+  async scheduled(kind: "cancellation" | "delay", flightNumber: string, origin: string, scheduledDeparture: number, minutes = 15): Promise<CreatedMarket> {
+    if (!this.schedule) throw new HttpError(501, "schedule_unavailable", "Kein Flugplan-Anbieter konfiguriert");
+    const f = await this.schedule.status(flightNumber, origin, scheduledDeparture);
+    if (!f) throw new HttpError(404, "flight_not_found", "Flug nicht im Flugplan");
+    if (f.status !== "scheduled" && f.status !== "delayed") throw new HttpError(422, "already_departed", "Flug ist nicht mehr planmäßig am Boden");
+    const flight: FlightRef = {
+      callsign: f.callsign ?? "",
+      flightNumber: f.flightNumber,
+      icao24: "",
+      origin: f.origin,
+      destination: f.destination,
+    };
+    const now = this.ctx.now();
+    if (kind === "cancellation") {
+      const proposal = this.unwrap(proposeCancellation(flight, f.scheduledDeparture, now));
+      return this.create(proposal, BigInt(this.cfg.SEED_ADA_CANCELLATION) * ADA, BigInt(this.cfg.MAX_TOTAL_ADA_CANCELLATION) * ADA, this.schedule.simulated);
+    }
+    if (!flight.callsign) throw new HttpError(422, "no_callsign", "Ohne Rufzeichen lässt sich die Landung nicht verfolgen");
+    const proposal = this.unwrap(proposeDelayScheduled(flight, f.scheduledDeparture, f.scheduledArrival, minutes, now));
+    return this.create(proposal, BigInt(this.cfg.SEED_ADA) * ADA, BigInt(this.cfg.MAX_TOTAL_ADA) * ADA, this.schedule.simulated);
+  }
+
+  private async create(proposal: Proposal, seed: bigint, maxTotal: bigint, simulated: boolean): Promise<CreatedMarket> {
+    const existing = this.findExisting(proposal.question);
+    if (existing) return { marketId: existing, existing: true };
+    const open = this.index.markets.filter((m) => m.datum.state.kind === "open").length + this.creating.size;
+    if (open >= this.cfg.MAX_OPEN_MARKETS) throw new HttpError(429, "too_many_markets", "Gerade zu viele offene Märkte");
+
+    const q = proposal.question;
+    const pools = parimutuel.seedPools(proposal.probabilities, seed, ADA);
+    const claimDeadline = proposal.resolveDeadline + this.cfg.CLAIM_WINDOW_DAYS * DAY;
+    const metadata = (marketId: string): FtMetadata[] =>
+      outcomeLabels(q, "en").map((label, i) => ({
+        name: tokenLabel(q, i),
+        description: `${questionTitle(q, "en")} | ${label}`,
+        ticker: ticker(q, i),
+        url: `${this.cfg.PUBLIC_URL}/?market=${marketId}`,
+        decimals: 6,
+      }));
+    let marketId = "";
+    const txHash = await this.ctx.operator.run(async (walletUtxos) => {
+      const built = await buildCreateMarket(
+        this.ctx.operator.lucid,
+        this.ctx.contracts,
+        {
+          question: q,
+          pools,
+          closeTime: proposal.closeTime,
+          resolveDeadline: proposal.resolveDeadline,
+          claimDeadline,
+          feeBps: BigInt(this.cfg.FEE_BPS),
+          maxTotal,
+          metadata,
+          now: this.ctx.now(),
+        },
+        { walletUtxos },
+      );
+      marketId = built.marketId;
+      return built.tx;
+    });
+    const meta: MarketMeta = {
+      marketId,
+      question: q,
+      createdAt: Date.now(),
+      txHash,
+      probabilities: proposal.probabilities,
+      model: proposal.model,
+      seedLovelace: pools.map(String),
+      ...(simulated ? { simulated } : {}),
+    };
+    this.store.putMeta(meta);
+    this.creating.set(marketId, meta);
+    for (const f of flightsOf(q)) this.tracker.watch(f, proposal.resolveDeadline);
+    log.info("market created", { marketId, kind: q.kind, txHash, probabilities: proposal.probabilities.map((p) => p.toFixed(3)) });
+    return { marketId, txHash, existing: false };
+  }
+}

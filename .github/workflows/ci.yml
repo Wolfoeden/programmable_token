@@ -1,0 +1,38 @@
+name: ci
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+
+jobs:
+  onchain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aiken-lang/setup-aiken@v1
+        with:
+          version: v1.1.24
+      - name: Aiken tests
+        working-directory: onchain
+        run: aiken check --max-success 500
+      - name: Blueprint matches the sources
+        working-directory: onchain
+        run: |
+          jq -S '[.validators[] | {title, hash}]' plutus.json > /tmp/before.json
+          aiken build
+          jq -S '[.validators[] | {title, hash}]' plutus.json > /tmp/after.json
+          diff /tmp/before.json /tmp/after.json
+
+  offchain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build -w @flightradar/web

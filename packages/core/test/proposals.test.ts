@@ -45,6 +45,24 @@ describe("proposals", () => {
     expect(yes).toBeLessThan(0.8);
   });
 
+  it("produces integer times for the on-chain datum", () => {
+    for (const km of [300, 777, 1234, 2500]) {
+      const r = proposeLandingBefore(plane("aaaaaa", km, 300), flight("BAW902", "aaaaaa"), now + 123);
+      expect(r.ok).toBe(true);
+      if (!r.ok) continue;
+      expect(Number.isInteger(r.proposal.closeTime)).toBe(true);
+      expect(Number.isInteger(r.proposal.resolveDeadline)).toBe(true);
+    }
+    const race = proposeRace(
+      [
+        { ac: plane("aaaaaa", 777, 300), flight: flight("BAW902", "aaaaaa") },
+        { ac: plane("bbbbbb", 801, 60), flight: flight("DLH9", "bbbbbb") },
+      ],
+      now + 77,
+    );
+    expect(race.ok && Number.isInteger(race.proposal.closeTime) && Number.isInteger(race.proposal.resolveDeadline)).toBe(true);
+  });
+
   it("refuses markets too close to landing", () => {
     const r = proposeLandingBefore(plane("aaaaaa", 40, 300), flight("BAW902", "aaaaaa"), now);
     expect(r).toEqual({ ok: false, error: "too_close_to_landing" });

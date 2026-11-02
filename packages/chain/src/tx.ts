@@ -32,6 +32,15 @@ export const DEFAULT_BATCHER_FEE = 400_000n;
 /** Width of validity windows. */
 const WINDOW_MS = 5 * 60_000;
 
+/** Options shared by all builders. */
+export interface BuildOptions {
+  /** Wallet UTxOs to select from instead of querying the wallet (lets a
+   * server run several transactions from one wallet without collisions). */
+  walletUtxos?: UTxO[];
+}
+
+const completeWith = (opts: BuildOptions) => (opts.walletUtxos ? { presetWalletInputs: opts.walletUtxos } : {});
+
 export class MarketError extends Error {
   constructor(
     readonly code: "market_closed" | "market_not_open" | "market_not_resolved" | "bad_outcome" | "bad_stake" | "cap_reached" | "no_seed_utxo" | "nothing_to_claim",
@@ -60,7 +69,8 @@ export interface CreateMarketParams {
   claimDeadline: number;
   feeBps: bigint;
   maxTotal: bigint;
-  metadata: FtMetadata[];
+  /** CIP-68 metadata per outcome, or a function of the market id. */
+  metadata: FtMetadata[] | ((marketId: string) => FtMetadata[]);
   now: number;
 }
 
@@ -68,14 +78,16 @@ export async function buildCreateMarket(
   lucid: LucidEvolution,
   c: Contracts,
   p: CreateMarketParams,
+  opts: BuildOptions = {},
 ): Promise<{ tx: TxSignBuilder; marketId: string }> {
   const n = outcomeCount(p.question);
-  if (p.pools.length !== n || p.metadata.length !== n) throw new MarketError("bad_outcome", "pools and metadata must match the outcomes");
   const operatorAddress = await lucid.wallet().address();
-  const utxos = await lucid.wallet().getUtxos();
+  const utxos = opts.walletUtxos ?? (await lucid.wallet().getUtxos());
   const seed = utxos.find((u) => Object.keys(u.assets).length === 1 && lovelaceOf(u) >= 5_000_000n) ?? utxos[0];
   if (!seed) throw new MarketError("no_seed_utxo");
   const marketId = marketIdFromSeed(seed.txHash, seed.outputIndex);
+  const metadata = typeof p.metadata === "function" ? p.metadata(marketId) : p.metadata;
+  if (p.pools.length !== n || metadata.length !== n) throw new MarketError("bad_outcome", "pools and metadata must match the outcomes");
   const nft = unit(c.marketHash, marketNftName(marketId));
   const datum: MarketDatum = {
     marketId,
@@ -103,7 +115,7 @@ export async function buildCreateMarket(
       { kind: "inline", value: encodeMarketDatum(datum) },
       { lovelace: parimutuel.total(p.pools) + MARKET_BUFFER, [nft]: 1n },
     );
-  p.metadata.forEach((meta, i) => {
+  metadata.forEach((meta, i) => {
     tx = tx.pay.ToContract(
       c.metadataAddress,
       { kind: "inline", value: encodeCip68Ft(meta) },
@@ -138,6 +150,7 @@ export async function buildBet(
   outcome: number,
   stake: bigint,
   now: number,
+  opts: BuildOptions = {},
 ): Promise<TxSignBuilder> {
   assertBettable(m, outcome, stake, now);
   const pools = m.datum.pools.map((p, i) => (i === outcome ? p + stake : p));
@@ -149,7 +162,7 @@ export async function buildBet(
     .mintAssets({ [unit(c.marketHash, positionName(m.datum.marketId, outcome))]: stake }, MintRedeemer.mintOrBurn())
     .pay.ToContract(...continuing(c, m, { ...m.datum, pools }, lovelaceOf(m.utxo) + stake))
     .validTo(Math.min(now + WINDOW_MS, Number(m.datum.closeTime) - 1000))
-    .complete();
+    .complete(completeWith(opts));
 }
 
 /** Lock a bet order for the batcher. No contention: does not touch the market UTxO. */
@@ -161,6 +174,7 @@ export async function buildBetOrder(
   stake: bigint,
   now: number,
   batcherFee = DEFAULT_BATCHER_FEE,
+  opts: BuildOptions = {},
 ): Promise<TxSignBuilder> {
   assertBettable(m, outcome, stake, now);
   const owner = await lucid.wallet().address();
@@ -175,7 +189,7 @@ export async function buildBetOrder(
   return lucid
     .newTx()
     .pay.ToContract(c.orderAddress, { kind: "inline", value: encodeOrderDatum(datum) }, { lovelace: stake + batcherFee + ORDER_DEPOSIT })
-    .complete();
+    .complete(completeWith(opts));
 }
 
 /** Lock position tokens in a claim order for the batcher. */
@@ -185,6 +199,7 @@ export async function buildClaimOrder(
   m: MarketView,
   positions: Assets,
   batcherFee = DEFAULT_BATCHER_FEE,
+  opts: BuildOptions = {},
 ): Promise<TxSignBuilder> {
   if (m.datum.state.kind !== "resolved") throw new MarketError("market_not_resolved");
   const owner = await lucid.wallet().address();
@@ -200,16 +215,16 @@ export async function buildClaimOrder(
   return lucid
     .newTx()
     .pay.ToContract(c.orderAddress, { kind: "inline", value: encodeOrderDatum(datum) }, { ...positions, lovelace: batcherFee + ORDER_DEPOSIT })
-    .complete();
+    .complete(completeWith(opts));
 }
 
-export async function buildCancelOrder(lucid: LucidEvolution, c: Contracts, o: OrderView): Promise<TxSignBuilder> {
+export async function buildCancelOrder(lucid: LucidEvolution, c: Contracts, o: OrderView, opts: BuildOptions = {}): Promise<TxSignBuilder> {
   return lucid
     .newTx()
     .collectFrom([o.utxo], OrderRedeemer.cancel())
     .attach.SpendingValidator(c.order)
     .addSignerKey(o.datum.ownerKey)
-    .complete();
+    .complete(completeWith(opts));
 }
 
 // ## Batching
@@ -255,6 +270,7 @@ export async function buildBatch(
   m: MarketView,
   orders: OrderView[],
   now: number,
+  opts: BuildOptions = {},
 ): Promise<TxSignBuilder> {
   const id = m.datum.marketId;
   const mine = orders.filter((o) => o.datum.marketId === id);
@@ -293,7 +309,7 @@ export async function buildBatch(
         },
       );
     }
-    return tx.validTo(Math.min(now + WINDOW_MS, Number(m.datum.closeTime) - 1000)).complete();
+    return tx.validTo(Math.min(now + WINDOW_MS, Number(m.datum.closeTime) - 1000)).complete(completeWith(opts));
   }
 
   // Resolved: claim orders.
@@ -316,11 +332,11 @@ export async function buildBatch(
     );
   }
   if (Object.keys(burn).length > 0) tx = tx.mintAssets(burn, MintRedeemer.mintOrBurn());
-  return tx.pay.ToContract(...continuing(c, m, m.datum, lovelaceOf(m.utxo) - paid)).complete();
+  return tx.pay.ToContract(...continuing(c, m, m.datum, lovelaceOf(m.utxo) - paid)).complete(completeWith(opts));
 }
 
 /** Return expired orders to their owners. Anyone may do this after the deadline. */
-export async function buildRefunds(lucid: LucidEvolution, c: Contracts, orders: OrderView[], now: number): Promise<TxSignBuilder> {
+export async function buildRefunds(lucid: LucidEvolution, c: Contracts, orders: OrderView[], now: number, opts: BuildOptions = {}): Promise<TxSignBuilder> {
   const due = orders.filter((o) => Number(o.datum.deadline) < now - 2000);
   if (due.length === 0) throw new Error("no expired orders");
   let tx = lucid.newTx().attach.SpendingValidator(c.order).collectFrom(due.map((o) => o.utxo), OrderRedeemer.refund());
@@ -332,12 +348,12 @@ export async function buildRefunds(lucid: LucidEvolution, c: Contracts, orders: 
     );
   }
   const latestDeadline = Math.max(...due.map((o) => Number(o.datum.deadline)));
-  return tx.validFrom(Math.max(latestDeadline + 1000, now - 60_000)).complete();
+  return tx.validFrom(Math.max(latestDeadline + 1000, now - 60_000)).complete(completeWith(opts));
 }
 
 // ## Resolution and claims
 
-export async function buildResolve(lucid: LucidEvolution, c: Contracts, m: MarketView, winner: number | null): Promise<TxSignBuilder> {
+export async function buildResolve(lucid: LucidEvolution, c: Contracts, m: MarketView, winner: number | null, opts: BuildOptions = {}): Promise<TxSignBuilder> {
   if (m.datum.state.kind !== "open") throw new MarketError("market_not_open");
   if (winner !== null && (winner < 0 || winner >= m.datum.pools.length)) throw new MarketError("bad_outcome");
   const fee = winner === null ? 0n : parimutuel.fee(m.datum.pools, winner, m.datum.feeBps);
@@ -348,10 +364,10 @@ export async function buildResolve(lucid: LucidEvolution, c: Contracts, m: Marke
     .attach.SpendingValidator(c.market)
     .pay.ToContract(...continuing(c, m, { ...m.datum, state: { kind: "resolved", winner } }, lovelaceOf(m.utxo) - fee))
     .addSigner(operator)
-    .complete();
+    .complete(completeWith(opts));
 }
 
-export async function buildForceVoid(lucid: LucidEvolution, c: Contracts, m: MarketView, now: number): Promise<TxSignBuilder> {
+export async function buildForceVoid(lucid: LucidEvolution, c: Contracts, m: MarketView, now: number, opts: BuildOptions = {}): Promise<TxSignBuilder> {
   if (m.datum.state.kind !== "open") throw new MarketError("market_not_open");
   return lucid
     .newTx()
@@ -359,11 +375,17 @@ export async function buildForceVoid(lucid: LucidEvolution, c: Contracts, m: Mar
     .attach.SpendingValidator(c.market)
     .pay.ToContract(...continuing(c, m, { ...m.datum, state: { kind: "resolved", winner: null } }, lovelaceOf(m.utxo)))
     .validFrom(Math.max(Number(m.datum.resolveDeadline) + 1000, now - 60_000))
-    .complete();
+    .complete(completeWith(opts));
 }
 
 /** Claim directly: burn the wallet's position tokens of this market and withdraw. */
-export async function buildClaim(lucid: LucidEvolution, c: Contracts, m: MarketView, positions: Map<number, bigint>): Promise<TxSignBuilder> {
+export async function buildClaim(
+  lucid: LucidEvolution,
+  c: Contracts,
+  m: MarketView,
+  positions: Map<number, bigint>,
+  opts: BuildOptions = {},
+): Promise<TxSignBuilder> {
   if (m.datum.state.kind !== "resolved") throw new MarketError("market_not_resolved");
   const burn: Assets = {};
   for (const [outcome, q] of positions) burn[unit(c.marketHash, positionName(m.datum.marketId, outcome))] = -q;
@@ -375,7 +397,7 @@ export async function buildClaim(lucid: LucidEvolution, c: Contracts, m: MarketV
     .attach.SpendingValidator(c.market)
     .mintAssets(burn, MintRedeemer.mintOrBurn())
     .pay.ToContract(...continuing(c, m, m.datum, lovelaceOf(m.utxo) - due))
-    .complete();
+    .complete(completeWith(opts));
 }
 
 /** Operator closes a market after the claim deadline and burns its NFTs. */
@@ -385,6 +407,7 @@ export async function buildClose(
   m: MarketView,
   references: UTxO[],
   now: number,
+  opts: BuildOptions = {},
 ): Promise<TxSignBuilder> {
   const operator = await lucid.wallet().address();
   const burn: Assets = { [unit(c.marketHash, marketNftName(m.datum.marketId))]: -1n };
@@ -399,5 +422,5 @@ export async function buildClose(
     .mintAssets(burn, MintRedeemer.mintOrBurn())
     .addSigner(operator)
     .validFrom(Math.max(Number(m.datum.claimDeadline) + 1000, now - 60_000))
-    .complete();
+    .complete(completeWith(opts));
 }

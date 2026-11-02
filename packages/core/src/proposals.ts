@@ -38,9 +38,10 @@ export type ProposalResult = { ok: true; proposal: Proposal } | { ok: false; err
 /** Probabilities are kept away from 0 and 1 so both sides stay bettable. */
 const bound = (p: number) => clamp(p, 0.02, 0.98);
 
-/** Bets close a bit before landing: 15 min or 30 % of the remaining time. */
+/** Bets close a bit before landing: 15 min or 30 % of the remaining time,
+ * rounded down to the full minute (on-chain times are integers). */
 function closeBeforeLanding(eta: EtaEstimate): number {
-  return eta.etaMs - Math.max(15 * MIN, 0.3 * eta.remainingMin * MIN);
+  return Math.floor((eta.etaMs - Math.max(15 * MIN, 0.3 * eta.remainingMin * MIN)) / MIN) * MIN;
 }
 
 function roundTo(ms: number, step: number): number {
@@ -95,7 +96,7 @@ export function proposeDelayAirborne(
       question: { kind: "delay", flight, scheduledArrival, minutes },
       probabilities: [pLate, 1 - pLate],
       closeTime,
-      resolveDeadline: Math.max(limit, eta.etaMs) + 12 * HOUR,
+      resolveDeadline: Math.round(Math.max(limit, eta.etaMs) + 12 * HOUR),
       model: `ETA ${new Date(eta.etaMs).toISOString()} ± ${Math.round(eta.sigmaMs / MIN)} min vs. limit ${new Date(limit).toISOString()}`,
       eta: [eta],
     },
@@ -165,7 +166,7 @@ export function proposeRace(entries: ReadonlyArray<{ ac: Aircraft; flight: Fligh
       question: { kind: "race", flights: entries.map((e) => e.flight) },
       probabilities: probabilities.map((p) => p / sum),
       closeTime,
-      resolveDeadline: last.etaMs + 12 * HOUR,
+      resolveDeadline: Math.round(last.etaMs + 12 * HOUR),
       model: "independent normal arrival times per flight",
       eta: etas,
     },

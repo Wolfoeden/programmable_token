@@ -1,0 +1,13 @@
+node_modules/
+dist/
+coverage/
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+# Aiken build output (plutus.json is committed on purpose)
+onchain/build/
+# runtime state of the server
+apps/server/data/
+apps/web/test-results/

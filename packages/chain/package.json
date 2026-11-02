@@ -1,0 +1,20 @@
+{
+  "name": "@flightradar/chain",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Cardano off-chain code: blueprint, datum codecs, transaction builders, market indexer.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@flightradar/core": "0.1.0",
+    "@lucid-evolution/lucid": "0.8.9",
+    "@noble/hashes": "^1.8.0"
+  }
+}

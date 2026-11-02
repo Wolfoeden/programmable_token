@@ -1,0 +1,28 @@
+{
+  "name": "flightradar-fun",
+  "private": true,
+  "description": "Live flight map with parimutuel prediction markets on Cardano (landing time, delay, cancellation, races).",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build:onchain": "cd onchain && aiken build",
+    "test:onchain": "cd onchain && aiken check",
+    "test": "vitest run",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "dev:server": "npm run dev -w @flightradar/server",
+    "dev:web": "npm run dev -w @flightradar/web",
+    "demo": "npm run demo -w @flightradar/server",
+    "build": "npm run build --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "5.9.3",
+    "vitest": "^5.1.0"
+  }
+}

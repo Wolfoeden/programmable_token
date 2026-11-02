@@ -1,0 +1,22 @@
+{
+  "name": "@flightradar/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "API server: ADS-B proxy, markets, wallet tx building, oracle, order batcher, demo mode.",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "demo": "DEMO=1 tsx src/main.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.4.0",
+    "@fastify/static": "^10.1.8",
+    "@flightradar/chain": "0.1.0",
+    "@flightradar/core": "0.1.0",
+    "fastify": "^5.12.8",
+    "tsx": "^4.23.15",
+    "zod": "^4.6.7"
+  }
+}

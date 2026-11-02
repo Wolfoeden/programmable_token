@@ -265,14 +265,17 @@ export function App() {
             wallet.name
           ) : (
             <>
-              Wallet<span className="label-wide"> verbinden</span>
+              Wallet<span className="label-wide">verbinden</span>
             </>
           )}
         </button>
       </header>
 
       {health && raceHexes.length === 0 && (
-        <div className="banner">{health.demo ? t.demoBanner : health.network !== "Mainnet" ? t.testnetBanner(health.network) : ""}</div>
+        <div className="banner">
+          <span className="label-wide">{health.demo ? t.demoBanner : health.network !== "Mainnet" ? t.testnetBanner(health.network) : ""}</span>
+          <span className="label-narrow">{health.demo ? t.demoBannerShort : health.network !== "Mainnet" ? t.testnetBannerShort(health.network) : ""}</span>
+        </div>
       )}
       {raceHexes.length > 0 && (
         <div className="banner" style={{ display: "flex", gap: 8, alignItems: "center", color: "var(--text)" }}>

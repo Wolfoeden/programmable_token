@@ -52,6 +52,8 @@ Die Linie ist die ETA, gerundet auf 5 Minuten. Die Wahrscheinlichkeit ist `P(Lan
 
 Wettschluss ist 15 Minuten oder 30 % der Restflugzeit vor der ETA, je nachdem, was früher ist.
 
+Gemessen wird der Zeitpunkt der ersten ADS-B-Position mit Bodenstatus am Zielflughafen. Im Endanflug fragt das Oracle das Flugzeug alle 2 Sekunden ab, sonst alle 10 Sekunden. Die barometrische Höhe taugt dafür nicht: Sie bezieht sich auf Standarddruck. An einem Hochdrucktag zeigte ein Anflug auf Gatwick im Test kurz vor dem Aufsetzen −375 Fuß.
+
 ### Verspätung
 
 Vor dem Abflug gilt die veröffentlichte Pünktlichkeit. 2025 kamen in Europa 76,1 % der Linienflüge höchstens 15 Minuten nach Plan an. Daraus folgen 23,9 % Verspätungen über 15 Minuten (EUROCONTROL European Aviation Overview 2025). In den USA waren es 23,6 %, bei durchschnittlich 74 Minuten Verspätung der verspäteten Flüge (BTS-Daten).

@@ -99,7 +99,7 @@ Browser-Wallets wie Lace oder Eternl müssen auf Preprod stehen.
 
 ## Stand und offene Punkte
 
-Getestet sind die Verträge, die Off-Chain-Logik und der komplette Ablauf auf dem Emulator mit echten Live-Flugdaten.
+Getestet sind die Verträge, die Off-Chain-Logik und der komplette Ablauf auf dem Emulator mit echten Live-Flugdaten. Im Live-Test entschied das Oracle einen Landezeit-Markt auf einen echten Anflug nach London-Gatwick 21 Sekunden nach der ersten Bodenmeldung. Danach lief die Auszahlung an den Gewinner über die Web-App.
 
 - **Testnetz**: Noch nicht live auf Preprod ausprobiert. Ein Betrieb mit Koios oder Blockfrost ist vorbereitet.
 - **AeroDataBox**: Die Anbindung ist mangels Schlüssel ungetestet.

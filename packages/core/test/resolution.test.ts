@@ -15,14 +15,24 @@ const approach: Observation[] = [
 ];
 
 describe("touchdown detection", () => {
-  it("detects a landing from a ground position after an approach", () => {
+  it("takes the first ground position as the touchdown", () => {
     const td = detectTouchdown(approach, s(300))!;
     expect(td.airport).toBe("EDDF");
     expect(td.method).toBe("ground");
-    // 700 ft at 364 ft elevation -> 336 ft AGL at 700 fpm -> ~29 s after s(150)
-    expect(td.t).toBeGreaterThan(s(150));
-    expect(td.t).toBeLessThanOrEqual(s(200));
-    expect(Math.abs(td.t - s(179))).toBeLessThan(2000);
+    expect(td.t).toBe(s(200));
+    expect(td.uncertaintyMs).toBe(50_000);
+  });
+
+  it("is not fooled by barometric altitude below the runway on a high-pressure day", () => {
+    // Real pattern seen at Gatwick: pressure altitude reads -375 ft on final.
+    const highPressure: Observation[] = [
+      { t: s(0), lat: 50.04, lon: 8.66, altFt: -100, onGround: false, gsKt: 140, vrFpm: -768 },
+      { t: s(11), lat: 50.04, lon: 8.62, altFt: -375, onGround: false, gsKt: 136, vrFpm: -128 },
+      { t: s(23), lat: 50.04, lon: 8.59, onGround: true, gsKt: 85 },
+    ];
+    const td = detectTouchdown(highPressure, s(60))!;
+    expect(td.t).toBe(s(23));
+    expect(td.uncertaintyMs).toBe(12_000);
   });
 
   it("ignores ground positions before the aircraft was airborne", () => {

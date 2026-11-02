@@ -7,6 +7,8 @@ const bool = z
 
 const Env = z.object({
   PORT: z.coerce.number().default(8787),
+  /** Set when running behind a reverse proxy so rate limits see client IPs. */
+  TRUST_PROXY: bool,
   HOST: z.string().default("0.0.0.0"),
   /** Run against an in-memory Cardano emulator with demo wallets. */
   DEMO: bool,

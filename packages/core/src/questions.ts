@@ -106,8 +106,8 @@ export function questionRules(q: Question, lang: Lang = "de"): string {
     ? "Landet der Flug nicht am Ziel (Umleitung) oder ist bis zur Auflösungsfrist keine Landung beobachtbar, wird der Markt annulliert und alle Einsätze werden erstattet."
     : "If the flight lands anywhere but its destination (diversion), or no landing is observed by the resolve deadline, the market is voided and all stakes are refunded.";
   const touchdown = de
-    ? "Gemessen wird der Aufsetzzeitpunkt aus öffentlichen ADS-B-Daten."
-    : "Touchdown time is measured from public ADS-B data.";
+    ? "Maßgeblich ist der Zeitpunkt der ersten ADS-B-Bodenposition am Zielflughafen (öffentliche Daten). Reißt das Signal im kurzen Endanflug ab, wird er aus der letzten Position geschätzt."
+    : "The time of the first ADS-B ground position at the destination airport counts (public data). If the signal is lost on short final, it is estimated from the last position.";
   switch (q.kind) {
     case "landing_before":
       return de

@@ -2,7 +2,7 @@
  * Follows every flight that has an open market and keeps its position
  * history, which the oracle turns into touchdown times.
  */
-import { detectTouchdown, flightKey, type Aircraft, type FlightRef, type FlightStatus, type Observation } from "@flightradar/core";
+import { airportByIcao, detectTouchdown, distanceKm, flightKey, type Aircraft, type FlightRef, type FlightStatus, type Observation } from "@flightradar/core";
 import type { AdsbSource } from "./adsb.js";
 import { log } from "./util.js";
 
@@ -83,6 +83,35 @@ export class Tracker {
       }
     } catch (e) {
       log.warn("tracker poll failed", { error: String(e) });
+    }
+  }
+
+  /**
+   * Aircraft on final approach (below about 4,000 ft within 40 km of their
+   * destination). They are polled every couple of seconds so the first
+   * ground report, which decides landing markets, is caught promptly.
+   */
+  private finalApproach(): Map<string, string> {
+    const out = new Map<string, string>();
+    for (const [key, w] of this.watches) {
+      const ac = this.last.get(key);
+      const dest = airportByIcao(w.flight.destination);
+      if (!w.hex || !ac || ac.onGround || !dest) continue;
+      if ((ac.altitudeFt ?? 99_999) < 4000 && distanceKm(ac, dest) < 40) out.set(w.hex, key);
+    }
+    return out;
+  }
+
+  async pollFinal(): Promise<void> {
+    const finals = this.finalApproach();
+    if (finals.size === 0) return;
+    try {
+      for (const ac of await this.adsb.track([...finals.keys()])) {
+        const key = finals.get(ac.hex);
+        if (key) this.record(key, ac);
+      }
+    } catch (e) {
+      log.warn("final approach poll failed", { error: String(e) });
     }
   }
 

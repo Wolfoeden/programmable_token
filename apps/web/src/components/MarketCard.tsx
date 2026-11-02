@@ -123,6 +123,7 @@ export function MarketCard({ market: m, highlight, busy, onBet }: MarketCardProp
             </div>
           )}
           <div className="note">{t.quoteNote}</div>
+          <div className="note">{t.costNote}</div>
         </div>
       )}
       <details className="rules">

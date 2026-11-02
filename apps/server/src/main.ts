@@ -50,8 +50,10 @@ async function main() {
   };
   loop("index", 5000, () => index.refresh());
   loop("tracker", 10_000, () => tracker.poll());
+  loop("tracker-final", 2000, () => tracker.pollFinal());
   loop("oracle", 15_000, () => oracle.tick(index.live));
   loop("batcher", 10_000, () => batcher.tick(index.live, index.orders));
+  loop("sweeper", 10 * 60_000, () => oracle.sweep(index.live));
 
   const shutdown = async () => {
     store.flush();

@@ -16,14 +16,22 @@ export interface Observation {
   vrFpm?: number;
 }
 
+/**
+ * The measured touchdown.
+ *
+ * Rule: the time of the first ADS-B position flagged "on ground" within
+ * reach of the airport counts ("ground"). Barometric altitude is not used to
+ * refine it: it refers to standard pressure and reads hundreds of feet off
+ * near the ground depending on the weather. If the aircraft disappears on
+ * short final without a ground report, the touchdown is estimated from its
+ * last position and descent rate ("signal-lost").
+ */
 export interface Touchdown {
   airport: string;
-  /** Estimated touchdown, unix ms. */
+  /** Measured or estimated touchdown, unix ms. */
   t: number;
-  /** "ground": a ground position was seen. "signal-lost": the aircraft was
-   * last seen on short final and then disappeared below coverage. */
   method: "ground" | "signal-lost";
-  /** Width of the interval the touchdown is known to lie in, ms. */
+  /** Gap to the previous observation (ground) or the descent estimate (signal-lost), ms. */
   uncertaintyMs: number;
 }
 
@@ -77,13 +85,7 @@ export function detectTouchdown(
     if ((ob.gsKt ?? 0) > 200) continue; // ground flag glitch at speed
     const airport = o.airportLookup(ob, o.groundRadiusKm);
     if (!airport) continue;
-    const gap = ob.t - lastAirborne.t;
-    if (gap <= 180_000 && lastAirborne.altFt !== undefined) {
-      const agl = lastAirborne.altFt - airport.elevationFt;
-      const t = Math.min(ob.t, lastAirborne.t + descentMs(agl, lastAirborne.vrFpm));
-      return { airport: airport.icao, t: Math.round(t), method: "ground", uncertaintyMs: gap };
-    }
-    return { airport: airport.icao, t: ob.t, method: "ground", uncertaintyMs: gap };
+    return { airport: airport.icao, t: ob.t, method: "ground", uncertaintyMs: ob.t - lastAirborne.t };
   }
   const last = obs[obs.length - 1];
   if (!last || last.onGround || last.altFt === undefined) return null;
@@ -91,8 +93,8 @@ export function detectTouchdown(
   if ((last.vrFpm ?? 0) > 500) return null; // climbing away: go-around or departure
   const airport = o.airportLookup(last, o.finalRadiusKm);
   if (!airport) return null;
-  const agl = last.altFt - airport.elevationFt;
-  if (agl > o.finalMaxAglFt) return null;
+  const agl = Math.min(o.finalMaxAglFt, Math.max(0, last.altFt - airport.elevationFt));
+  if (last.altFt - airport.elevationFt > o.finalMaxAglFt) return null;
   const dt = descentMs(agl, last.vrFpm);
   return { airport: airport.icao, t: Math.round(last.t + dt), method: "signal-lost", uncertaintyMs: Math.round(dt) };
 }

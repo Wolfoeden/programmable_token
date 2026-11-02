@@ -57,7 +57,7 @@ function bech32(address: string): string {
 }
 
 export async function buildApi(s: Services): Promise<FastifyInstance> {
-  const app = Fastify({ logger: false, bodyLimit: 4 * 1024 * 1024 });
+  const app = Fastify({ logger: false, bodyLimit: 4 * 1024 * 1024, trustProxy: s.cfg.TRUST_PROXY });
   await app.register(cors, { origin: true });
   const marketRequests = new RateLimiter(s.cfg.MARKET_REQUESTS_PER_HOUR, 3600_000);
 

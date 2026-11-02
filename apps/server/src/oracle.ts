@@ -5,7 +5,7 @@
  * evidence is stored for audit.
  */
 import { flightKey, flightsOf, judge, type FlightStatus, type Observation } from "@flightradar/core";
-import { buildResolve, type MarketView } from "@flightradar/chain";
+import { buildClose, buildResolve, fetchReferenceNfts, type MarketView } from "@flightradar/chain";
 import type { ChainContext } from "./chain.js";
 import type { ScheduleProvider } from "./schedule.js";
 import type { Store } from "./store.js";
@@ -38,6 +38,27 @@ export class Oracle {
       .catch(() => null);
     this.scheduleCache.set(key, p);
     return p;
+  }
+
+  /**
+   * Close markets whose claim deadline has passed: burns the market and
+   * reference NFTs and returns deposits and unclaimed funds to the operator.
+   */
+  async sweep(markets: MarketView[]): Promise<void> {
+    const now = this.ctx.now();
+    for (const m of markets) {
+      if (Number(m.datum.claimDeadline) + 60_000 > now || this.inflight.has(m.datum.marketId)) continue;
+      this.inflight.set(m.datum.marketId, Date.now() + 5 * 60_000);
+      try {
+        const refs = await fetchReferenceNfts(this.ctx.operator.lucid, this.ctx.contracts, m.datum.marketId);
+        const txHash = await this.ctx.operator.run((walletUtxos) =>
+          buildClose(this.ctx.operator.lucid, this.ctx.contracts, m, refs, now, { walletUtxos }),
+        );
+        log.info("market closed", { marketId: m.datum.marketId, txHash });
+      } catch (e) {
+        log.warn("close failed", { marketId: m.datum.marketId, error: String(e) });
+      }
+    }
   }
 
   async tick(markets: MarketView[]): Promise<void> {

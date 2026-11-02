@@ -60,11 +60,12 @@ export function PortfolioPanel(p: PortfolioPanelProps) {
                       Markt öffnen
                     </button>
                   )}
-                  {m && (m.phase === "resolved" || m.phase === "void") && (
+                  {m && (m.phase === "resolved" || m.phase === "void") && claimable > 0n && (
                     <button type="button" className="btn small primary" disabled={p.busy} onClick={() => p.onClaim(pos.marketId)}>
-                      {claimable > 0n ? `${t.claim} ${ada(claimable)}` : "Token einlösen"}
+                      {t.claim} {ada(claimable)}
                     </button>
                   )}
+                  {m && m.phase === "resolved" && claimable === 0n && <span className="badge no">{t.lost}</span>}
                 </div>
               </div>
             </div>

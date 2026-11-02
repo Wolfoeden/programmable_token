@@ -238,6 +238,10 @@ button {
   text-overflow: ellipsis;
 }
 
+.label-narrow {
+  display: none;
+}
+
 .hint {
   position: absolute;
   bottom: 44px;
@@ -794,10 +798,6 @@ details.rules summary {
   }
   .banner {
     top: 108px;
-    white-space: normal;
-    text-align: center;
-    border-radius: 12px;
-    width: calc(100% - 20px);
   }
   .panel {
     top: auto;
@@ -816,9 +816,14 @@ details.rules summary {
   }
   .attribution {
     left: 12px;
+    right: 56px;
     text-align: left;
   }
-  .btn .label-wide {
+  .btn .label-wide,
+  .banner .label-wide {
     display: none;
+  }
+  .banner .label-narrow {
+    display: inline;
   }
 }

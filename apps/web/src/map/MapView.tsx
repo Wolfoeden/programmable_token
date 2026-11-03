@@ -227,6 +227,8 @@ export function MapView(props: MapViewProps) {
         const radius = distanceKm({ lat: c.lat, lon: c.lng }, { lat: ne.lat, lon: ne.lng }) / KM_PER_NM;
         propsRef.current.onZoomHint(radius > MAX_RADIUS_NM * 1.4);
         const res = await api.aircraft(c.lat, c.lng, Math.min(MAX_RADIUS_NM, Math.max(10, radius)));
+        // A transient empty answer (upstream hiccup) must not wipe the map.
+        if (res.aircraft.length === 0 && aircraft.current.size > 20) return;
         const next = new Map<string, AircraftDto>();
         for (const a of res.aircraft) next.set(a.hex, a);
         // keep the selected aircraft even if it left the query area

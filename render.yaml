@@ -25,5 +25,8 @@ services:
         value: "1"
       - key: PUBLIC_URL
         value: https://flightradar.fun
+      # adsb.fi speaks the same readsb API; used when adsb.lol throttles Render's IPs.
+      - key: ADSB_FALLBACK_URL
+        value: https://opendata.adsb.fi/api
       - key: DATA_DIR
         value: data

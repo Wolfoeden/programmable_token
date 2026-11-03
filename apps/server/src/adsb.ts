@@ -10,7 +10,11 @@ import { fromReadsb, type Aircraft, type ReadsbAircraft } from "@flightradar/cor
 import { fetchJson, HttpError, log, Throttle, TtlCache } from "./util.js";
 
 interface ReadsbResponse {
+  /** adsb.lol */
   ac?: ReadsbAircraft[];
+  /** adsb.fi */
+  aircraft?: ReadsbAircraft[];
+  /** ms (adsb.lol) or seconds (adsb.fi) */
   now?: number;
 }
 
@@ -40,8 +44,8 @@ export class AdsbClient implements AdsbSource {
   private async get(base: string, path: string, throttle: Throttle): Promise<Aircraft[]> {
     await throttle.wait();
     const res = await fetchJson<ReadsbResponse>(`${base}${path}`);
-    const now = res.now ?? Date.now();
-    return (res.ac ?? []).map((a) => fromReadsb(a, now)).filter((a): a is Aircraft => a !== null);
+    const now = res.now === undefined ? Date.now() : res.now < 1e12 ? res.now * 1000 : res.now;
+    return (res.ac ?? res.aircraft ?? []).map((a) => fromReadsb(a, now)).filter((a): a is Aircraft => a !== null);
   }
 
   private rateLimited(e: unknown): boolean {
@@ -58,7 +62,17 @@ export class AdsbClient implements AdsbSource {
     const hit = this.areaCache.get(key);
     if (hit) return hit;
     if (Date.now() < this.backoffUntil) return Promise.resolve(this.lastGood.get(key) ?? []);
-    const p = this.get(this.baseUrl, `/v2/point/${qlat.toFixed(3)}/${qlon.toFixed(3)}/${r}`, this.mapThrottle)
+    const path = `/v2/point/${qlat.toFixed(3)}/${qlon.toFixed(3)}/${r}`;
+    const fromFallback = () =>
+      this.fallbackUrl
+        ? this.get(this.fallbackUrl, `/v2/lat/${qlat.toFixed(3)}/lon/${qlon.toFixed(3)}/dist/${r}`, this.mapThrottle)
+        : Promise.reject(new Error("no fallback"));
+    const p = this.get(this.baseUrl, path, this.mapThrottle)
+      .then((list) => (list.length === 0 && this.fallbackUrl ? fromFallback().catch(() => list) : list))
+      .catch((e) => {
+        if (this.rateLimited(e)) this.backoffUntil = Date.now() + 15_000;
+        return fromFallback();
+      })
       .then((list) => {
         this.lastGood.set(key, list);
         return list;

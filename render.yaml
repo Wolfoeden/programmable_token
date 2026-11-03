@@ -4,7 +4,9 @@ services:
   - type: web
     name: flightradar-fun
     runtime: node
-    plan: starter
+    # Free plan sleeps after 15 min without traffic. Keep it awake with an
+    # external ping every 10 min on /api/health (e.g. cron-job.org).
+    plan: free
     region: frankfurt
     buildCommand: npm ci && npm run build -w @flightradar/web
     startCommand: cd apps/server && node --import tsx src/main.ts

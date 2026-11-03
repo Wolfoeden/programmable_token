@@ -1,0 +1,27 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+# One web service runs the API, oracle and batcher and also serves the web app.
+services:
+  - type: web
+    name: flightradar-fun
+    runtime: node
+    plan: starter
+    region: frankfurt
+    buildCommand: npm ci && npm run build -w @flightradar/web
+    startCommand: cd apps/server && node --import tsx src/main.ts
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Demo mode: simulated chain in memory, play money, live flight data.
+      # For Preprod remove DEMO and set OPERATOR_SEED (and optionally
+      # BLOCKFROST_PROJECT_ID) in the Render dashboard.
+      - key: DEMO
+        value: "1"
+      - key: WEB_DIST
+        value: ../web/dist
+      - key: TRUST_PROXY
+        value: "1"
+      - key: PUBLIC_URL
+        value: https://flightradar.fun
+      - key: DATA_DIR
+        value: data

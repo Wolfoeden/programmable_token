@@ -7,6 +7,8 @@
 import {
   airportByIcao,
   flightKey,
+  isShortHaul,
+  onRoute,
   landingWithinHour,
   webcamFor,
   flightsOf,
@@ -102,8 +104,8 @@ export class MarketMaker {
     if (!route) throw new HttpError(422, "unknown_route", "Route unknown");
     // Only short final legs into a live-stream airport are bettable.
     const dest = airportByIcao(route.destination);
-    if (!webcamFor(route.destination) || !dest || !landingWithinHour(ac, dest, this.ctx.now())) {
-      throw new HttpError(422, "not_eligible", "Markets are only offered on flights landing at a live-stream airport within the next hour");
+    if (!webcamFor(route.destination) || !dest || !isShortHaul(route.origin, route.destination) || !onRoute(ac, route.origin, route.destination) || !landingWithinHour(ac, dest, this.ctx.now())) {
+      throw new HttpError(422, "not_eligible", "Markets are only offered on short flights landing at a live-stream airport within the next hour");
     }
     return {
       ac,

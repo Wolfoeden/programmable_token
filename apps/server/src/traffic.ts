@@ -4,7 +4,7 @@
  * slow round-robin, shared by all clients, and paused while nobody is
  * watching. This keeps upstream calls, CPU and payload small and constant.
  */
-import { classifyMovement, MOVEMENT_RADIUS_NM, webcamAirports, type Aircraft, type Airport, type Movement } from "@flightradar/core";
+import { classifyMovement, isShortHaul, onRoute, MOVEMENT_RADIUS_NM, webcamAirports, type Aircraft, type Airport, type Movement } from "@flightradar/core";
 import type { AdsbSource } from "./adsb.js";
 import type { RouteSource } from "./routes.js";
 
@@ -12,6 +12,8 @@ export interface Shown {
   aircraft: Aircraft;
   phase: Movement;
   airport: string;
+  /** Departure airport (ICAO), within about an hour of `airport`. */
+  origin?: string;
 }
 
 const IDLE_AFTER_MS = 2 * 60_000;
@@ -51,11 +53,14 @@ export class CamTraffic {
       if (!phase) continue;
       // Geometry alone also catches traffic for neighbouring airports
       // (London has six). Keep only flights whose route ends here.
+      // Only short hops: the departure airport is about an hour away at most.
+      let origin: string | undefined;
       if (this.routes) {
         const route = await this.routes.lookup(ac.callsign);
-        if (route?.destination !== airport.icao) continue;
+        if (route?.destination !== airport.icao || !isShortHaul(route.origin, airport.icao) || !onRoute(ac, route.origin, airport.icao)) continue;
+        origin = route.origin;
       }
-      shown.push({ aircraft: ac, phase, airport: airport.icao });
+      shown.push({ aircraft: ac, phase, airport: airport.icao, ...(origin ? { origin } : {}) });
     }
     // An empty answer is usually an upstream hiccup: keep the last list.
     if (shown.length > 0 || !this.perAirport.has(airport.icao)) this.perAirport.set(airport.icao, { at: Date.now(), list: shown });

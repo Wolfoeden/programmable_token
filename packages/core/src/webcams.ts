@@ -43,6 +43,30 @@ export const MOVEMENT_RADIUS_NM = 250;
 export type Movement = "landing";
 
 /**
+ * Short-haul limit: the departure airport must be within about one hour of
+ * flying from the live-stream airport (great circle, cruise ~750 km/h minus
+ * climb and descent).
+ */
+export const SHORT_HAUL_KM = 700;
+
+/**
+ * Route data can be stale (callsigns get reused for other routes). The
+ * aircraft must lie roughly between origin and destination.
+ */
+export function onRoute(ac: { lat: number; lon: number }, origin: string | undefined, destination: string | undefined): boolean {
+  const o = airportByIcao(origin);
+  const d = airportByIcao(destination);
+  if (!o || !d) return false;
+  return distanceKm(o, ac) + distanceKm(ac, d) <= 1.25 * distanceKm(o, d) + 60;
+}
+
+export function isShortHaul(origin: string | undefined, destination: string | undefined): boolean {
+  const o = airportByIcao(origin);
+  const d = airportByIcao(destination);
+  return !!o && !!d && o.icao !== d.icao && distanceKm(o, d) <= SHORT_HAUL_KM;
+}
+
+/**
  * Is this aircraft on its way to land at the airport within the hour?
  * Geometry only (no flight plan): pointing at the airport (±20° beyond
  * 60 km, ±35° inside, any direction on the last 15 km), not climbing, near

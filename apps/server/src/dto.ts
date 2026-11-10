@@ -133,9 +133,15 @@ export interface AircraftDto {
   /** Landing at or taking off from `airport` (a webcam airport). */
   phase?: "landing" | "takeoff";
   airport?: string;
+  /** Departure airport of a shown flight. */
+  origin?: string;
 }
 
-export function aircraftDto(a: Aircraft, marketCount: number, movement?: { phase: "landing" | "takeoff"; airport: string }): AircraftDto {
+export function aircraftDto(
+  a: Aircraft,
+  marketCount: number,
+  movement?: { phase: "landing" | "takeoff"; airport: string; origin?: string },
+): AircraftDto {
   const { squawk: _s, category: _c, ...rest } = a;
   return { ...rest, ...(marketCount > 0 ? { markets: marketCount } : {}), ...(movement ?? {}) };
 }

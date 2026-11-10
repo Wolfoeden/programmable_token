@@ -7,7 +7,7 @@ import { destinationPoint, KM_PER_NM } from "@flightradar/core/geo";
 import { api } from "../api";
 import type { AircraftDto, AirportDto } from "../types";
 import { greatCircle } from "./greatCircle";
-import { planeImage, ringImage } from "./icons";
+import { diamondImage, planeImage, ringImage } from "./icons";
 
 // The worker is a standalone module; point MapLibre at the bundled copy so it
 // works both with Vite's dependency pre-bundling and in production builds.
@@ -41,6 +41,7 @@ export function MapView(props: MapViewProps) {
   const mapRef = useRef<MlMap | null>(null);
   const aircraft = useRef<Map<string, AircraftDto>>(new Map());
   const trail = useRef<{ hex: string | null; points: [number, number][] }>({ hex: null, points: [] });
+  const lookupAirport = useRef<((icao: string) => { lat: number; lon: number; iata: string; icao: string } | undefined) | null>(null);
   const propsRef = useRef(props);
   propsRef.current = props;
 
@@ -63,11 +64,46 @@ export function MapView(props: MapViewProps) {
     map.on("load", async () => {
       map.addImage("plane", planeImage(64), { sdf: true, pixelRatio: 2 });
       map.addImage("ring", ringImage(64), { sdf: true, pixelRatio: 2 });
+      map.addImage("diamond", diamondImage(48), { pixelRatio: 2 });
       const empty: FeatureCollection = { type: "FeatureCollection", features: [] };
       map.addSource("aircraft", { type: "geojson", data: empty });
       map.addSource("trail", { type: "geojson", data: empty });
       map.addSource("route", { type: "geojson", data: empty });
       map.addSource("airports", { type: "geojson", data: empty });
+      map.addSource("origins", { type: "geojson", data: empty });
+      map.addSource("flows", { type: "geojson", data: empty });
+      // Where each shown flight came from (dashed) and where it goes (faint).
+      map.addLayer({
+        id: "flows-flown",
+        type: "line",
+        source: "flows",
+        filter: ["==", ["get", "leg"], "flown"],
+        paint: { "line-color": "#5aa9ff", "line-width": 1.2, "line-opacity": 0.45, "line-dasharray": [1.5, 2] },
+      });
+      map.addLayer({
+        id: "flows-ahead",
+        type: "line",
+        source: "flows",
+        filter: ["==", ["get", "leg"], "ahead"],
+        paint: { "line-color": "#3ddc97", "line-width": 1.2, "line-opacity": 0.35 },
+      });
+      map.addLayer({
+        id: "origins",
+        type: "symbol",
+        source: "origins",
+        layout: {
+          "icon-image": "diamond",
+          "icon-size": ["interpolate", ["linear"], ["zoom"], 3, 0.6, 9, 1],
+          "icon-allow-overlap": true,
+          "text-field": ["get", "iata"],
+          "text-size": 11,
+          "text-offset": [0, 1.2],
+          "text-anchor": "top",
+          "text-optional": true,
+          "text-font": ["Noto Sans Regular"],
+        },
+        paint: { "text-color": "#5aa9ff", "text-halo-color": "#0b0d10", "text-halo-width": 1.2 },
+      });
 
       map.addLayer({
         id: "route",
@@ -187,6 +223,8 @@ export function MapView(props: MapViewProps) {
 
       // Only airports with a public webcam are shown and clickable.
       const { webcamAirports } = await import("@flightradar/core/webcams");
+      const { airportByIcao } = await import("@flightradar/core/airports");
+      lookupAirport.current = airportByIcao;
       (map.getSource("airports") as GeoJSONSource).setData({
         type: "FeatureCollection",
         features: webcamAirports().map((a) => ({
@@ -281,6 +319,29 @@ export function MapView(props: MapViewProps) {
         });
       }
       src.setData({ type: "FeatureCollection", features });
+
+      // Departure airports of the shown flights and their legs.
+      const find = lookupAirport.current;
+      if (find) {
+        const origins = new Map<string, { lat: number; lon: number; iata: string; icao: string }>();
+        const legs: GeoFeature[] = [];
+        for (const f of features) {
+          const a = aircraft.current.get(String(f.properties.hex));
+          if (!a?.origin || !a.airport) continue;
+          const o = find(a.origin);
+          const d = find(a.airport);
+          if (!o || !d) continue;
+          origins.set(o.icao, o);
+          const pos = { lon: f.geometry.coordinates[0]!, lat: f.geometry.coordinates[1]! };
+          legs.push({ type: "Feature", geometry: { type: "LineString", coordinates: greatCircle(o, pos, 24) }, properties: { leg: "flown" } });
+          legs.push({ type: "Feature", geometry: { type: "LineString", coordinates: greatCircle(pos, d, 24) }, properties: { leg: "ahead" } });
+        }
+        (map.getSource("origins") as GeoJSONSource | undefined)?.setData({
+          type: "FeatureCollection",
+          features: [...origins.values()].map((o) => ({ type: "Feature", geometry: { type: "Point", coordinates: [o.lon, o.lat] }, properties: { iata: o.iata || o.icao } })),
+        });
+        (map.getSource("flows") as GeoJSONSource | undefined)?.setData({ type: "FeatureCollection", features: legs });
+      }
 
       const t = trail.current;
       (map.getSource("trail") as GeoJSONSource).setData({

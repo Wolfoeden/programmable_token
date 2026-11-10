@@ -85,6 +85,7 @@ export function AircraftPanel(p: AircraftPanelProps) {
           <>
             <span className={`badge ${a.phase === "landing" ? "yes" : "accent"}`} style={{ alignSelf: "flex-start" }}>
               {a.phase === "landing" ? t.landingAt(a.airport) : t.takeoffFrom(a.airport)}
+              {a.origin ? ` · from ${a.origin}` : ""}
             </span>
             <CamLink icao={a.airport} />
           </>

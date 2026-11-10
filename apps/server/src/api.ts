@@ -121,7 +121,7 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
     for (const x of s.traffic.list()) {
       const prev = out.get(x.aircraft.hex);
       const ac = prev && prev.timestamp > x.aircraft.timestamp ? { ...x.aircraft, ...prev } : x.aircraft;
-      out.set(ac.hex, aircraftDto(ac, counts.get(ac.hex) ?? 0, { phase: x.phase, airport: x.airport }));
+      out.set(ac.hex, aircraftDto(ac, counts.get(ac.hex) ?? 0, { phase: x.phase, airport: x.airport, ...(x.origin ? { origin: x.origin } : {}) }));
     }
     return { now: Date.now(), aircraft: [...out.values()] };
   });

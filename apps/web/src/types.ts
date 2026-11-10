@@ -45,6 +45,7 @@ export interface AircraftDto {
   markets?: number;
   phase?: "landing" | "takeoff";
   airport?: string;
+  origin?: string;
 }
 
 export interface AirportDto {

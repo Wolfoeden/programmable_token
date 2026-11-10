@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { airportByIcao, classifyMovement, destinationPoint, landingWithinHour, WEBCAMS, webcamAirports, webcamFor, type Aircraft } from "../src/index.js";
+import { airportByIcao, classifyMovement, isShortHaul, onRoute, destinationPoint, landingWithinHour, WEBCAMS, webcamAirports, webcamFor, type Aircraft } from "../src/index.js";
 
 const LHR = airportByIcao("EGLL")!;
 const at = (km: number, bearing: number, o: Partial<Aircraft>): Aircraft => {
@@ -26,5 +26,19 @@ describe("live-stream airports", () => {
     expect(classifyMovement(at(20, 270, { trackDeg: 270, altitudeFt: 7000, verticalRateFpm: 2500, groundSpeedKt: 280 }), LHR)).toBeNull();
     // flying past
     expect(classifyMovement(at(100, 90, { trackDeg: 0, altitudeFt: 15000, verticalRateFpm: -1000, groundSpeedKt: 350 }), LHR)).toBeNull();
+  });
+
+  it("counts only departure airports within about an hour", () => {
+    expect(isShortHaul("LFPG", "EGLL")).toBe(true); // Paris, ~350 km
+    expect(isShortHaul("GCLP", "GCRR")).toBe(true); // Gran Canaria
+    expect(isShortHaul("KLAX", "KLAS")).toBe(true);
+    expect(isShortHaul("WSSS", "EGLL")).toBe(false); // Singapore
+    expect(isShortHaul("LPPT", "LPMA")).toBe(false); // Lisbon, ~970 km
+    expect(isShortHaul("EGLL", "EGLL")).toBe(false);
+  });
+
+  it("rejects stale routes where the aircraft is nowhere near the line", () => {
+    expect(onRoute({ lat: 50.9, lon: 2.2 }, "EBBR", "EGLL")).toBe(true); // over the Channel coast
+    expect(onRoute({ lat: 48.2, lon: -2.0 }, "EBBR", "EGLL")).toBe(false); // over Brittany
   });
 });

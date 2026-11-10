@@ -52,3 +52,25 @@ export function ringImage(size = 64): ImageData {
   g.stroke();
   return g.getImageData(0, 0, size, size);
 }
+
+/** Diamond marker for departure airports (distinct from the live-stream rings). */
+export function diamondImage(size = 48): ImageData {
+  const c = document.createElement("canvas");
+  c.width = size;
+  c.height = size;
+  const g = c.getContext("2d")!;
+  const m = size / 2;
+  const r = size * 0.36;
+  g.beginPath();
+  g.moveTo(m, m - r);
+  g.lineTo(m + r, m);
+  g.lineTo(m, m + r);
+  g.lineTo(m - r, m);
+  g.closePath();
+  g.fillStyle = "#0b0d10";
+  g.fill();
+  g.lineWidth = size * 0.08;
+  g.strokeStyle = "#5aa9ff";
+  g.stroke();
+  return g.getImageData(0, 0, size, size);
+}

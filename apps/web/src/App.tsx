@@ -268,7 +268,7 @@ export function App() {
             wallet.name
           ) : (
             <>
-              Wallet<span className="label-wide">verbinden</span>
+              <span className="label-wide">Connect</span>Wallet
             </>
           )}
         </button>
@@ -359,6 +359,10 @@ export function App() {
         <span>
           <span className="ring" style={{ borderColor: "var(--accent)", background: "#0b0d10" }} />
           Live-stream airport
+        </span>
+        <span>
+          <span className="diamond" />
+          Departure airport
         </span>
         <span>
           <span className="ring" />

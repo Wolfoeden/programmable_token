@@ -130,9 +130,12 @@ export interface AircraftDto {
   verticalRateFpm?: number;
   timestamp: number;
   markets?: number;
+  /** Landing at or taking off from `airport` (a webcam airport). */
+  phase?: "landing" | "takeoff";
+  airport?: string;
 }
 
-export function aircraftDto(a: Aircraft, marketCount: number): AircraftDto {
+export function aircraftDto(a: Aircraft, marketCount: number, movement?: { phase: "landing" | "takeoff"; airport: string }): AircraftDto {
   const { squawk: _s, category: _c, ...rest } = a;
-  return marketCount > 0 ? { ...rest, markets: marketCount } : rest;
+  return { ...rest, ...(marketCount > 0 ? { markets: marketCount } : {}), ...(movement ?? {}) };
 }

@@ -38,10 +38,10 @@ export type ProposalResult = { ok: true; proposal: Proposal } | { ok: false; err
 /** Probabilities are kept away from 0 and 1 so both sides stay bettable. */
 const bound = (p: number) => clamp(p, 0.02, 0.98);
 
-/** Bets close a bit before landing: 15 min or 30 % of the remaining time,
+/** Bets close a bit before landing: 10 min or 30 % of the remaining time,
  * rounded down to the full minute (on-chain times are integers). */
 function closeBeforeLanding(eta: EtaEstimate): number {
-  return Math.floor((eta.etaMs - Math.max(15 * MIN, 0.3 * eta.remainingMin * MIN)) / MIN) * MIN;
+  return Math.floor((eta.etaMs - Math.max(10 * MIN, 0.3 * eta.remainingMin * MIN)) / MIN) * MIN;
 }
 
 function roundTo(ms: number, step: number): number {

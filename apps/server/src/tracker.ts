@@ -119,6 +119,11 @@ export class Tracker {
     return this.series.get(flightKey(flight)) ?? [];
   }
 
+  /** Latest known position of every flight that has a market. */
+  allLatest(): Aircraft[] {
+    return [...this.watches.keys()].map((k) => this.last.get(k)).filter((a): a is Aircraft => !!a);
+  }
+
   latest(flight: FlightRef): Aircraft | undefined {
     return this.last.get(flightKey(flight));
   }

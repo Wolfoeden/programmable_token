@@ -20,6 +20,7 @@ import { Oracle } from "../src/oracle.js";
 import type { Route, RouteSource } from "../src/routes.js";
 import { Store } from "../src/store.js";
 import { Tracker } from "../src/tracker.js";
+import { CamTraffic } from "../src/traffic.js";
 
 class FakeAdsb implements AdsbSource {
   planes = new Map<string, Aircraft>();
@@ -52,6 +53,7 @@ let adsb: FakeAdsb;
 let index: ChainIndex;
 let maker: MarketMaker;
 let tracker: Tracker;
+let traffic: CamTraffic;
 let oracle: Oracle;
 let batcher: Batcher;
 let marketId: string;
@@ -86,11 +88,12 @@ describe("server pipeline (emulator, fake flight data)", () => {
     adsb = new FakeAdsb();
     const store = new Store(cfg.DATA_DIR);
     tracker = new Tracker(adsb);
+    traffic = new CamTraffic(adsb);
     index = new ChainIndex(ctx);
     maker = new MarketMaker(cfg, ctx, index, adsb, new FakeRoutes(), undefined, store, tracker);
     oracle = new Oracle(ctx, tracker, undefined, store);
     batcher = new Batcher(ctx);
-    app = await buildApi({ cfg, ctx, index, adsb, routes: new FakeRoutes(), schedule: undefined, store, maker });
+    app = await buildApi({ cfg, ctx, index, adsb, routes: new FakeRoutes(), schedule: undefined, store, maker, traffic, tracker });
     // BA902 cruising towards Frankfurt, 600 km west of it.
     const now = ctx.now();
     const p = destinationPoint(FRA, 270, 600);
@@ -111,6 +114,21 @@ describe("server pipeline (emulator, fake flight data)", () => {
     const { market } = await call<{ market: { phase: string; pools: string[]; question: { threshold: number } } }>("GET", `/api/markets/${marketId}`);
     expect(market.phase).toBe("open");
     expect(market.pools.reduce((a, b) => a + BigInt(b), 0n)).toBe(20_000_000n);
+  });
+
+  it("shows only webcam-airport movements and flights with markets", async () => {
+    const zrh = airportByIcao("LSZH")!;
+    const p = destinationPoint(zrh, 0, 60);
+    adsb.planes.set("4b1234", { hex: "4b1234", callsign: "SWR9", lat: p.lat, lon: p.lon, altitudeFt: 9000, onGround: false, groundSpeedKt: 250, trackDeg: 180, verticalRateFpm: -1200, timestamp: ctx.now() });
+    adsb.planes.set("4b9999", { hex: "4b9999", callsign: "OVER1", lat: p.lat, lon: p.lon, altitudeFt: 38000, onGround: false, groundSpeedKt: 450, trackDeg: 90, verticalRateFpm: 0, timestamp: ctx.now() });
+    await call("GET", "/api/aircraft"); // marks a client as watching
+    for (let i = 0; i < 20; i++) await traffic.step();
+    const { aircraft } = await call<{ aircraft: Array<{ hex: string; phase?: string; airport?: string; markets?: number }> }>("GET", "/api/aircraft");
+    expect(aircraft.find((a) => a.hex === "4b1234")).toMatchObject({ phase: "landing", airport: "LSZH" });
+    expect(aircraft.find((a) => a.hex === "4b9999")).toBeUndefined();
+    expect(aircraft.find((a) => a.hex === HEX)).toMatchObject({ markets: 1 }); // 600 km out, shown because it has a market
+    adsb.planes.delete("4b1234");
+    adsb.planes.delete("4b9999");
   });
 
   it("takes bets through the API and batches them", async () => {

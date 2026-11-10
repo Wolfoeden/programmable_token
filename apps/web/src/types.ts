@@ -43,6 +43,8 @@ export interface AircraftDto {
   verticalRateFpm?: number;
   timestamp: number;
   markets?: number;
+  phase?: "landing" | "takeoff";
+  airport?: string;
 }
 
 export interface AirportDto {

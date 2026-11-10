@@ -31,8 +31,7 @@ export interface WalletPayload {
 
 export const api = {
   health: () => request<Health>("/api/health"),
-  aircraft: (lat: number, lon: number, radius: number) =>
-    request<{ now: number; aircraft: AircraftDto[] }>(`/api/aircraft?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}&radius=${Math.round(radius)}`),
+  aircraft: () => request<{ now: number; aircraft: AircraftDto[] }>("/api/aircraft"),
   aircraftDetail: (hex: string) => request<AircraftDetail>(`/api/aircraft/${hex}`),
   markets: () => request<{ now: number; markets: MarketDto[] }>("/api/markets"),
   market: (id: string) => request<{ market: MarketDto }>(`/api/markets/${id}`),

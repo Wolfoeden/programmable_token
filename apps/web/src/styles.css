@@ -570,6 +570,24 @@ button {
   font-weight: 700;
 }
 
+.cam-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 197, 61, 0.35);
+  background: rgba(255, 197, 61, 0.08);
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.cam-link small {
+  color: var(--text-2);
+  font-weight: 400;
+}
+
 .note {
   color: var(--text-3);
   font-size: 12px;
@@ -759,6 +777,15 @@ details.rules summary {
   height: 6px;
   border-radius: 3px;
   background: linear-gradient(90deg, #ff9f43, #feca57, #48dbfb, #54a0ff, #a29bfe);
+}
+
+.legend .dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  vertical-align: -1px;
+  margin-right: 4px;
 }
 
 .legend .ring {

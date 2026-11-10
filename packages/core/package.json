@@ -14,7 +14,8 @@
     "./format": "./src/format.ts",
     "./geo": "./src/geo.ts",
     "./parimutuel": "./src/parimutuel.ts",
-    "./questions": "./src/questions.ts"
+    "./questions": "./src/questions.ts",
+    "./webcams": "./src/webcams.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

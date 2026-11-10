@@ -9,3 +9,4 @@ export * from "./proposals.js";
 export * from "./questions.js";
 export * from "./resolution.js";
 export * from "./stats.js";
+export * from "./webcams.js";

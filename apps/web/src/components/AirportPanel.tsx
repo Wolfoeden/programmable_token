@@ -3,6 +3,7 @@ import { clock, formatPercent } from "../format";
 import { usePoll } from "../hooks";
 import { errorText, t } from "../i18n";
 import type { MarketDto } from "../types";
+import { CamLink } from "./CamLink";
 import { MarketCard } from "./MarketCard";
 
 export interface AirportPanelProps {
@@ -43,6 +44,7 @@ export function AirportPanel(p: AirportPanelProps) {
         </button>
       </div>
       <div className="panel-body">
+        <CamLink icao={p.icao} />
         {related.length > 0 && <div className="section-title">{t.markets}</div>}
         {related.map((m) => (
           <MarketCard key={m.id} market={m} busy={p.busy} onBet={p.onBet} />

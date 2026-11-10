@@ -35,6 +35,8 @@ import type { MarketMaker } from "./marketMaker.js";
 import type { RouteSource } from "./routes.js";
 import type { ScheduleProvider } from "./schedule.js";
 import type { Store } from "./store.js";
+import type { Tracker } from "./tracker.js";
+import type { CamTraffic } from "./traffic.js";
 import { HttpError, RateLimiter, toJson } from "./util.js";
 
 export interface Services {
@@ -46,6 +48,8 @@ export interface Services {
   schedule: ScheduleProvider | undefined;
   store: Store;
   maker: MarketMaker;
+  traffic: CamTraffic;
+  tracker: Tracker;
 }
 
 const Hex = z.string().regex(/^[0-9a-fA-F]+$/);
@@ -105,13 +109,21 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
 
   // ## Live traffic
 
-  app.get("/api/aircraft", async (req) => {
-    const q = z
-      .object({ lat: z.coerce.number().min(-90).max(90), lon: z.coerce.number().min(-180).max(180), radius: z.coerce.number().min(5).max(250).default(150) })
-      .parse(req.query);
-    const list = await s.adsb.area(q.lat, q.lon, q.radius);
+  /**
+   * Map traffic: aircraft landing at or taking off from webcam airports,
+   * plus every flight that has a market. Same answer for all clients.
+   */
+  app.get("/api/aircraft", async () => {
+    s.traffic.touch();
     const counts = openMarketsByHex();
-    return { now: Date.now(), aircraft: list.filter((a) => a.callsign || a.registration).map((a) => aircraftDto(a, counts.get(a.hex) ?? 0)) };
+    const out = new Map<string, ReturnType<typeof aircraftDto>>();
+    for (const a of s.tracker.allLatest()) out.set(a.hex, aircraftDto(a, counts.get(a.hex) ?? 0));
+    for (const x of s.traffic.list()) {
+      const prev = out.get(x.aircraft.hex);
+      const ac = prev && prev.timestamp > x.aircraft.timestamp ? { ...x.aircraft, ...prev } : x.aircraft;
+      out.set(ac.hex, aircraftDto(ac, counts.get(ac.hex) ?? 0, { phase: x.phase, airport: x.airport }));
+    }
+    return { now: Date.now(), aircraft: [...out.values()] };
   });
 
   app.get("/api/aircraft/:hex", async (req) => {
@@ -120,8 +132,9 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
     if (!ac) throw new HttpError(404, "aircraft_not_found");
     const route = ac.callsign ? await s.routes.lookup(ac.callsign) : null;
     const markets = allMarketDtos().filter((m) => m.icao24.includes(ac.hex));
+    const shown = s.traffic.list().find((x) => x.aircraft.hex === ac.hex);
     return toJson({
-      aircraft: aircraftDto(ac, markets.length),
+      aircraft: aircraftDto(ac, markets.length, shown && { phase: shown.phase, airport: shown.airport }),
       route,
       origin: route ? airportByIcao(route.origin) ?? null : null,
       destination: route ? airportByIcao(route.destination) ?? null : null,

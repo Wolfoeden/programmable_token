@@ -11,6 +11,7 @@ import { RouteClient } from "./routes.js";
 import { AeroDataBox, SimulatedSchedule, type ScheduleProvider } from "./schedule.js";
 import { Store } from "./store.js";
 import { Tracker } from "./tracker.js";
+import { CamTraffic } from "./traffic.js";
 import { log } from "./util.js";
 
 async function main() {
@@ -25,13 +26,14 @@ async function main() {
       : undefined;
   const store = new Store(cfg.DATA_DIR);
   const tracker = new Tracker(adsb);
+  const traffic = new CamTraffic(adsb);
   const index = new ChainIndex(ctx);
   const maker = new MarketMaker(cfg, ctx, index, adsb, routes, schedule, store, tracker);
   const oracle = new Oracle(ctx, tracker, schedule, store);
   const batcher = new Batcher(ctx);
 
   await index.refresh();
-  const app = await buildApi({ cfg, ctx, index, adsb, routes, schedule, store, maker });
+  const app = await buildApi({ cfg, ctx, index, adsb, routes, schedule, store, maker, traffic, tracker });
   await app.listen({ port: cfg.PORT, host: cfg.HOST });
   log.info(`listening on http://${cfg.HOST}:${cfg.PORT}`, { demo: cfg.DEMO, network: ctx.network, schedule: schedule?.name ?? "none" });
 
@@ -49,6 +51,7 @@ async function main() {
     setTimeout(run, everyMs).unref();
   };
   loop("index", 5000, () => index.refresh());
+  loop("traffic", 1500, () => traffic.step());
   loop("tracker", 10_000, () => tracker.poll());
   loop("tracker-final", 2000, () => tracker.pollFinal());
   loop("oracle", 15_000, () => oracle.tick(index.live));

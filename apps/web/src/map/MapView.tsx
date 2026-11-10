@@ -3,7 +3,7 @@ import { Map as MlMap, NavigationControl, setWorkerUrl, type GeoJSONSource, type
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import type { Feature as GeoFeature, FeatureCollection, Point } from "geojson";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { destinationPoint, distanceKm, KM_PER_NM } from "@flightradar/core/geo";
+import { destinationPoint, KM_PER_NM } from "@flightradar/core/geo";
 import { api } from "../api";
 import type { AircraftDto, AirportDto } from "../types";
 import { greatCircle } from "./greatCircle";
@@ -14,7 +14,6 @@ import { planeImage, ringImage } from "./icons";
 setWorkerUrl(workerUrl);
 
 const STYLE_URL = "https://tiles.openfreemap.org/styles/dark";
-const MAX_RADIUS_NM = 250;
 const RACE_COLORS = ["#5aa9ff", "#ff8a3d", "#c084fc", "#3ddc97"];
 
 export interface MapViewProps {
@@ -25,7 +24,6 @@ export interface MapViewProps {
   onAirportClick: (icao: string) => void;
   onBackgroundClick: () => void;
   onAircraftUpdate: (list: AircraftDto[]) => void;
-  onZoomHint: (show: boolean) => void;
   flyTo: { lat: number; lon: number; zoom?: number; key: number } | null;
 }
 
@@ -51,8 +49,8 @@ export function MapView(props: MapViewProps) {
     const map = new MlMap({
       container: container.current!,
       style: STYLE_URL,
-      center: [9.0, 50.0],
-      zoom: 5.6,
+      center: [10.5, 49.6],
+      zoom: 5.2,
       attributionControl: false,
       maxPitch: 0,
       dragRotate: false,
@@ -87,21 +85,20 @@ export function MapView(props: MapViewProps) {
         id: "airports",
         type: "circle",
         source: "airports",
-        minzoom: 4,
         paint: {
-          "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 2.5, 9, 6],
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 3, 4, 9, 8],
           "circle-color": "#0b0d10",
-          "circle-stroke-color": "#6f7a88",
-          "circle-stroke-width": 1.5,
+          "circle-stroke-color": "#ffc53d",
+          "circle-stroke-width": 2,
         },
       });
       map.addLayer({
         id: "airport-labels",
         type: "symbol",
         source: "airports",
-        minzoom: 6.5,
-        layout: { "text-field": ["get", "iata"], "text-size": 11, "text-offset": [0, 1.1], "text-font": ["Noto Sans Regular"] },
-        paint: { "text-color": "#a3adba", "text-halo-color": "#0b0d10", "text-halo-width": 1.2 },
+        minzoom: 4,
+        layout: { "text-field": ["get", "iata"], "text-size": 12, "text-offset": [0, 1.2], "text-font": ["Noto Sans Regular"] },
+        paint: { "text-color": "#ffc53d", "text-halo-color": "#0b0d10", "text-halo-width": 1.2 },
       });
       map.addLayer({
         id: "market-rings",
@@ -163,7 +160,11 @@ export function MapView(props: MapViewProps) {
             ["match", ["get", "race"], 0, RACE_COLORS[0]!, 1, RACE_COLORS[1]!, 2, RACE_COLORS[2]!, RACE_COLORS[3]!],
             ["==", ["get", "ground"], 1],
             "#7d8794",
-            ["interpolate", ["linear"], ["get", "alt"], 0, "#ff9f43", 8000, "#feca57", 20000, "#48dbfb", 32000, "#54a0ff", 42000, "#a29bfe"],
+            ["==", ["get", "phase"], "landing"],
+            "#3ddc97",
+            ["==", ["get", "phase"], "takeoff"],
+            "#ff9f43",
+            "#54a0ff",
           ],
           "icon-halo-color": "rgba(0,0,0,0.6)",
           "icon-halo-width": 1,
@@ -184,10 +185,11 @@ export function MapView(props: MapViewProps) {
         paint: { "text-color": "#e8ecf1", "text-halo-color": "#0b0d10", "text-halo-width": 1.2 },
       });
 
-      const { AIRPORTS } = await import("@flightradar/core/airports");
+      // Only airports with a public webcam are shown and clickable.
+      const { webcamAirports } = await import("@flightradar/core/webcams");
       (map.getSource("airports") as GeoJSONSource).setData({
         type: "FeatureCollection",
-        features: AIRPORTS.filter((a) => a.size === 2).map((a) => ({
+        features: webcamAirports().map((a) => ({
           type: "Feature",
           geometry: { type: "Point", coordinates: [a.lon, a.lat] },
           properties: { icao: a.icao, iata: a.iata || a.icao, name: a.name },
@@ -222,11 +224,7 @@ export function MapView(props: MapViewProps) {
       if (inflight) return;
       inflight = true;
       try {
-        const c = map.getCenter();
-        const ne = map.getBounds().getNorthEast();
-        const radius = distanceKm({ lat: c.lat, lon: c.lng }, { lat: ne.lat, lon: ne.lng }) / KM_PER_NM;
-        propsRef.current.onZoomHint(radius > MAX_RADIUS_NM * 1.4);
-        const res = await api.aircraft(c.lat, c.lng, Math.min(MAX_RADIUS_NM, Math.max(10, radius)));
+        const res = await api.aircraft();
         // A transient empty answer (upstream hiccup) must not wipe the map.
         if (res.aircraft.length === 0 && aircraft.current.size > 20) return;
         const next = new Map<string, AircraftDto>();
@@ -244,14 +242,10 @@ export function MapView(props: MapViewProps) {
       } finally {
         inflight = false;
         clearTimeout(timer);
-        timer = setTimeout(poll, 5000);
+        // Slower while the tab is hidden, to save server capacity.
+        timer = setTimeout(poll, document.hidden ? 60_000 : 8000);
       }
     }
-    let moveTimer: ReturnType<typeof setTimeout> | undefined;
-    map.on("moveend", () => {
-      clearTimeout(moveTimer);
-      moveTimer = setTimeout(() => void poll(), 350);
-    });
 
     // Dead reckoning between polls keeps the motion smooth.
     const tick = setInterval(render, 1000);
@@ -279,6 +273,7 @@ export function MapView(props: MapViewProps) {
             ground: a.onGround ? 1 : 0,
             heavy: a.type && /^(A3[3-8]|A35|B7[4-8]|B77|B78|A34)/.test(a.type) ? 1 : 0,
             markets: a.markets ?? 0,
+            phase: a.phase ?? "",
             sel,
             race,
             sort: sel ? 3 : race >= 0 ? 2 : a.markets ? 1 : 0,

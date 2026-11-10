@@ -3,6 +3,7 @@ import { distanceKm } from "@flightradar/core/geo";
 import { clock, feet, fpm, knots } from "../format";
 import { t } from "../i18n";
 import type { AircraftDetail, AircraftDto, MarketDto } from "../types";
+import { CamLink } from "./CamLink";
 import { MarketCard } from "./MarketCard";
 
 export interface AircraftPanelProps {
@@ -79,6 +80,15 @@ export function AircraftPanel(p: AircraftPanelProps) {
             <div className="v num">{eta ? `${clock(eta.etaMs)} ±${Math.round(eta.sigmaMs / 60000)}′` : "–"}</div>
           </div>
         </div>
+
+        {a?.phase && a.airport && (
+          <>
+            <span className={`badge ${a.phase === "landing" ? "yes" : "accent"}`} style={{ alignSelf: "flex-start" }}>
+              {a.phase === "landing" ? t.landingAt(a.airport) : t.takeoffFrom(a.airport)}
+            </span>
+            <CamLink icao={a.airport} />
+          </>
+        )}
 
         <div className="section-title">{t.markets}</div>
         {sorted.length === 0 && <div className="muted">{t.noMarkets}</div>}

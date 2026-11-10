@@ -20,6 +20,10 @@ Danach im Browser `http://localhost:5173` öffnen, „Wallet verbinden" klicken 
 
 Hinter einem HTTPS-Proxy braucht Node 22 zusätzlich `NODE_USE_ENV_PROXY=1`.
 
+## Welche Flüge die Karte zeigt
+
+Die Karte zeigt nur Flüge, die an einem Flughafen mit öffentlicher Live-Kamera landen oder starten, dazu alle Flüge mit offenem Markt. Die Liste der Flughäfen steht in `packages/core/src/webcams.ts`. Der Server fragt pro Flughafen reihum einmal ab, alle Besucher bekommen dieselbe kleine Liste, und ohne Besucher pausiert die Abfrage. Das hält Last und Datenmenge klein.
+
 ## Was es gibt
 
 | Markt | Frage | Daten für die Entscheidung | Startquote aus |

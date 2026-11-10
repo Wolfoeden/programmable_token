@@ -46,7 +46,6 @@ export function App() {
   const [about, setAbout] = useState(false);
   const [busy, setBusy] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [zoomHint, setZoomHint] = useState(false);
   const [flyTo, setFlyTo] = useState<{ lat: number; lon: number; zoom?: number; key: number } | null>(null);
   const [search, setSearch] = useState("");
   const aircraftRef = useRef<AircraftDto[]>([]);
@@ -218,7 +217,6 @@ export function App() {
         onAirportClick={(icao) => raceHexes.length === 0 && setSelection({ kind: "airport", icao })}
         onBackgroundClick={() => raceHexes.length === 0 && setSelection(null)}
         onAircraftUpdate={onAircraftUpdate}
-        onZoomHint={setZoomHint}
         flyTo={flyTo}
       />
 
@@ -299,7 +297,6 @@ export function App() {
           </button>
         </div>
       )}
-      {zoomHint && <div className="hint">{t.zoomHint}</div>}
 
       {selection?.kind === "aircraft" && (
         <AircraftPanel
@@ -350,9 +347,18 @@ export function App() {
       )}
 
       <div className="legend" aria-hidden>
-        <span>0 ft</span>
-        <span className="scale" />
-        <span>40.000 ft</span>
+        <span>
+          <span className="dot" style={{ background: "var(--yes)" }} />
+          Landung
+        </span>
+        <span>
+          <span className="dot" style={{ background: "#ff9f43" }} />
+          Start
+        </span>
+        <span>
+          <span className="ring" style={{ borderColor: "var(--accent)", background: "#0b0d10" }} />
+          Flughafen mit Live-Kamera
+        </span>
         <span>
           <span className="ring" />
           Markt offen

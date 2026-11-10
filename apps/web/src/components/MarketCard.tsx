@@ -33,7 +33,7 @@ function PhaseLine({ m, now }: { m: MarketDto; now: number }) {
     case "closed":
       return <span className="badge">{t.closed}</span>;
     case "resolved":
-      return <span className="badge yes">{t.resolved(m.labels.de[m.winner ?? 0] ?? "")}</span>;
+      return <span className="badge yes">{t.resolved(m.labels.en[m.winner ?? 0] ?? "")}</span>;
     case "void":
       return <span className="badge no">{t.voided}</span>;
   }
@@ -51,7 +51,7 @@ export function MarketCard({ market: m, highlight, busy, onBet }: MarketCardProp
   return (
     <div className={`market${highlight ? " highlight" : ""}`}>
       <div className="market-head">
-        <h3>{m.title.de}</h3>
+        <h3>{m.title.en}</h3>
         <div className="market-meta">
           <PhaseLine m={m} now={now} />
           <span className="num">
@@ -61,8 +61,8 @@ export function MarketCard({ market: m, highlight, busy, onBet }: MarketCardProp
           {m.simulated && <span className="badge">{t.simulated}</span>}
         </div>
       </div>
-      <div className="outcomes" role="radiogroup" aria-label={m.title.de}>
-        {m.labels.de.map((label, i) => {
+      <div className="outcomes" role="radiogroup" aria-label={m.title.en}>
+        {m.labels.en.map((label, i) => {
           const p = m.probabilities[i] ?? 0;
           const won = (m.phase === "resolved" && m.winner === i);
           return (
@@ -79,8 +79,8 @@ export function MarketCard({ market: m, highlight, busy, onBet }: MarketCardProp
               <span className="label" style={{ color: colorFor(m, i) }}>
                 {label}
               </span>
-              <span className="prob num">{formatPercent(p)}</span>
-              <span className="odds num">×{formatOdds(m.odds[i] ?? NaN)}</span>
+              <span className="prob num">{formatPercent(p, "en-US")}</span>
+              <span className="odds num">×{formatOdds(m.odds[i] ?? NaN, "en-US")}</span>
             </button>
           );
         })}
@@ -118,7 +118,7 @@ export function MarketCard({ market: m, highlight, busy, onBet }: MarketCardProp
             <div className="quote">
               <span className="muted">{t.payoutIfWin}</span>
               <span className="big num">
-                {ada(q.payout)} <span className="muted">×{formatOdds(q.multiplier)}</span>
+                {ada(q.payout)} <span className="muted">×{formatOdds(q.multiplier, "en-US")}</span>
               </span>
             </div>
           )}
@@ -130,14 +130,14 @@ export function MarketCard({ market: m, highlight, busy, onBet }: MarketCardProp
         <summary>
           {t.rules} · {t.fee(m.feeBps)}
         </summary>
-        <p>{m.rules.de}</p>
+        <p>{m.rules.en}</p>
         {m.seed && (
           <p>
-            {t.seedModel}: {m.seed.probabilities.map((p) => formatPercent(p)).join(" / ")} ({m.seed.model})
+            {t.seedModel}: {m.seed.probabilities.map((p) => formatPercent(p, "en-US")).join(" / ")} ({m.seed.model})
           </p>
         )}
-        {m.phase !== "creating" && m.closeTime > 0 && <p className="num">Wettschluss {utcClock(m.closeTime)} · Auflösung spätestens {utcClock(m.resolveDeadline)}</p>}
-        {m.resolution && <p>Begründung: {m.resolution.reason}</p>}
+        {m.phase !== "creating" && m.closeTime > 0 && <p className="num">Betting closes {utcClock(m.closeTime)} · resolved by {utcClock(m.resolveDeadline)} at the latest</p>}
+        {m.resolution && <p>Reason: {m.resolution.reason}</p>}
       </details>
     </div>
   );

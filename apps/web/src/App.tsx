@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { WEBCAMS as webcams } from "@flightradar/core/webcams";
 import { api } from "./api";
 import { AboutDialog } from "./components/AboutDialog";
 import { AircraftPanel } from "./components/AircraftPanel";
@@ -125,7 +126,7 @@ export function App() {
       }
       setWallet(w);
       remember(w.id);
-      toast("ok", `${w.name} verbunden`);
+      toast("ok", `${w.name} connected`);
     } catch (e) {
       toast("error", errorText(e));
     }
@@ -200,7 +201,7 @@ export function App() {
         // fall through to the toast below
       }
     }
-    toast("info", `${q} ist im sichtbaren Bereich nicht zu finden.`);
+    toast("info", `${q} is not on the map right now.`);
   };
 
   const aircraftMarkets = useMemo(() => (selectedHex ? marketList.filter((m) => m.icao24.includes(selectedHex)) : []), [marketList, selectedHex]);
@@ -214,7 +215,11 @@ export function App() {
         raceHexes={raceHexes}
         destination={detail?.destination ?? null}
         onAircraftClick={onAircraftClick}
-        onAirportClick={(icao) => raceHexes.length === 0 && setSelection({ kind: "airport", icao })}
+        onAirportClick={(icao) => {
+          // Live-stream airports open their stream; there are no departure-board markets.
+          const cam = webcams.find((w) => w.icao === icao);
+          if (raceHexes.length === 0 && cam) window.open(cam.url, "_blank", "noopener,noreferrer");
+        }}
         onBackgroundClick={() => raceHexes.length === 0 && setSelection(null)}
         onAircraftUpdate={onAircraftUpdate}
         flyTo={flyTo}
@@ -232,7 +237,7 @@ export function App() {
             flightradar<span className="fun">.fun</span>
           </strong>
           {health && <span className="badge">{health.demo ? "Demo" : health.network}</span>}
-          {openCount > 0 && <span className="badge accent num">{openCount} offen</span>}
+          {openCount > 0 && <span className="badge accent num">{openCount} open</span>}
         </div>
         <form className="search" onSubmit={onSearch}>
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t.search} aria-label={t.search} />
@@ -319,7 +324,7 @@ export function App() {
         <aside className="panel">
           <div className="panel-head">
             <div>
-              <h2>Markt</h2>
+              <h2>Market</h2>
               <div className="sub">{selectedMarket.kind}</div>
             </div>
             <button type="button" className="icon-btn" onClick={() => setSelection(null)} aria-label={t.close}>
@@ -349,19 +354,15 @@ export function App() {
       <div className="legend" aria-hidden>
         <span>
           <span className="dot" style={{ background: "var(--yes)" }} />
-          Landung
-        </span>
-        <span>
-          <span className="dot" style={{ background: "#ff9f43" }} />
-          Start
+          Landing within 1 h
         </span>
         <span>
           <span className="ring" style={{ borderColor: "var(--accent)", background: "#0b0d10" }} />
-          Flughafen mit Live-Kamera
+          Live-stream airport
         </span>
         <span>
           <span className="ring" />
-          Markt offen
+          Open market
         </span>
       </div>
       <div className="attribution">{t.attribution}</div>

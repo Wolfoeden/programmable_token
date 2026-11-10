@@ -5,7 +5,10 @@
  * operator holds the seed's position tokens and can win or lose them.
  */
 import {
+  airportByIcao,
   flightKey,
+  landingWithinHour,
+  webcamFor,
   flightsOf,
   outcomeLabels,
   parimutuel,
@@ -30,6 +33,7 @@ import type { RouteSource } from "./routes.js";
 import type { ScheduleProvider } from "./schedule.js";
 import type { MarketMeta, Store } from "./store.js";
 import type { Tracker } from "./tracker.js";
+import type { CamTraffic } from "./traffic.js";
 import { HttpError, log } from "./util.js";
 
 const ADA = 1_000_000n;
@@ -58,6 +62,8 @@ function ticker(q: Question, outcome: number): string {
 
 export class MarketMaker {
   private creating = new Map<string, MarketMeta>();
+  /** Departure-board markets (cancellation, pre-departure delay). Off by default. */
+  allowScheduled = false;
 
   constructor(
     private cfg: Config,
@@ -68,6 +74,7 @@ export class MarketMaker {
     private schedule: ScheduleProvider | undefined,
     private store: Store,
     private tracker: Tracker,
+    private traffic?: CamTraffic,
   ) {}
 
   /** Markets submitted but not yet visible in the chain index. */
@@ -88,11 +95,16 @@ export class MarketMaker {
   }
 
   async flightFor(hex: string): Promise<{ flight: FlightRef; ac: Awaited<ReturnType<AdsbSource["byHex"]>>[number] }> {
-    const [ac] = await this.adsb.byHex([hex]);
-    if (!ac) throw new HttpError(404, "aircraft_not_found", "Flugzeug gerade nicht sichtbar");
-    if (!ac.callsign) throw new HttpError(422, "no_callsign", "Kein Rufzeichen empfangen");
+    const ac = this.traffic?.find(hex) ?? (await this.adsb.byHex([hex]))[0];
+    if (!ac) throw new HttpError(404, "aircraft_not_found", "Aircraft not visible right now");
+    if (!ac.callsign) throw new HttpError(422, "no_callsign", "No callsign received");
     const route = await this.routes.lookup(ac.callsign);
-    if (!route) throw new HttpError(422, "unknown_route", "Route unbekannt");
+    if (!route) throw new HttpError(422, "unknown_route", "Route unknown");
+    // Only short final legs into a live-stream airport are bettable.
+    const dest = airportByIcao(route.destination);
+    if (!webcamFor(route.destination) || !dest || !landingWithinHour(ac, dest, this.ctx.now())) {
+      throw new HttpError(422, "not_eligible", "Markets are only offered on flights landing at a live-stream airport within the next hour");
+    }
     return {
       ac,
       flight: { callsign: ac.callsign, flightNumber: route.flightNumber, icao24: ac.hex, origin: route.origin, destination: route.destination },
@@ -112,7 +124,7 @@ export class MarketMaker {
   }
 
   async race(hexes: string[]): Promise<CreatedMarket> {
-    if (hexes.length < 2 || hexes.length > 4) throw new HttpError(422, "race_size", "Ein Rennen braucht 2 bis 4 Flüge");
+    if (hexes.length < 2 || hexes.length > 4) throw new HttpError(422, "race_size", "A race needs 2 to 4 flights");
     const entries = [];
     for (const hex of hexes) entries.push(await this.flightFor(hex));
     const proposal = this.unwrap(proposeRace(entries, this.ctx.now()));
@@ -121,20 +133,23 @@ export class MarketMaker {
   }
 
   async delayAirborne(hex: string, minutes: number): Promise<CreatedMarket> {
-    if (!this.schedule) throw new HttpError(501, "schedule_unavailable", "Kein Flugplan-Anbieter konfiguriert");
+    if (!this.schedule) throw new HttpError(501, "schedule_unavailable", "No schedule provider configured");
     const { ac, flight } = await this.flightFor(hex);
     const sched = await this.schedule.airborne(flight, this.ctx.now(), ac);
-    if (!sched) throw new HttpError(422, "schedule_not_found", "Planzeiten für diesen Flug nicht gefunden");
+    if (!sched) throw new HttpError(422, "schedule_not_found", "Schedule for this flight not found");
     const proposal = this.unwrap(proposeDelayAirborne(ac, flight, sched.scheduledArrival, minutes, this.ctx.now()));
     this.tracker.ingest(flight, ac);
     return this.create(proposal, BigInt(this.cfg.SEED_ADA) * ADA, BigInt(this.cfg.MAX_TOTAL_ADA) * ADA, this.schedule.simulated);
   }
 
   async scheduled(kind: "cancellation" | "delay", flightNumber: string, origin: string, scheduledDeparture: number, minutes = 15): Promise<CreatedMarket> {
-    if (!this.schedule) throw new HttpError(501, "schedule_unavailable", "Kein Flugplan-Anbieter konfiguriert");
+    // Pre-departure markets are switched off: only flights landing at a
+    // live-stream airport within the hour are bettable.
+    if (!this.allowScheduled) throw new HttpError(422, "not_eligible", "Markets are only offered on flights landing at a live-stream airport within the next hour");
+    if (!this.schedule) throw new HttpError(501, "schedule_unavailable", "No schedule provider configured");
     const f = await this.schedule.status(flightNumber, origin, scheduledDeparture);
-    if (!f) throw new HttpError(404, "flight_not_found", "Flug nicht im Flugplan");
-    if (f.status !== "scheduled" && f.status !== "delayed") throw new HttpError(422, "already_departed", "Flug ist nicht mehr planmäßig am Boden");
+    if (!f) throw new HttpError(404, "flight_not_found", "Flight not in the schedule");
+    if (f.status !== "scheduled" && f.status !== "delayed") throw new HttpError(422, "already_departed", "Flight is no longer scheduled on the ground");
     const flight: FlightRef = {
       callsign: f.callsign ?? "",
       flightNumber: f.flightNumber,
@@ -147,7 +162,7 @@ export class MarketMaker {
       const proposal = this.unwrap(proposeCancellation(flight, f.scheduledDeparture, now));
       return this.create(proposal, BigInt(this.cfg.SEED_ADA_CANCELLATION) * ADA, BigInt(this.cfg.MAX_TOTAL_ADA_CANCELLATION) * ADA, this.schedule.simulated);
     }
-    if (!flight.callsign) throw new HttpError(422, "no_callsign", "Ohne Rufzeichen lässt sich die Landung nicht verfolgen");
+    if (!flight.callsign) throw new HttpError(422, "no_callsign", "Without a callsign the landing cannot be tracked");
     const proposal = this.unwrap(proposeDelayScheduled(flight, f.scheduledDeparture, f.scheduledArrival, minutes, now));
     return this.create(proposal, BigInt(this.cfg.SEED_ADA) * ADA, BigInt(this.cfg.MAX_TOTAL_ADA) * ADA, this.schedule.simulated);
   }
@@ -156,7 +171,7 @@ export class MarketMaker {
     const existing = this.findExisting(proposal.question);
     if (existing) return { marketId: existing, existing: true };
     const open = this.index.markets.filter((m) => m.datum.state.kind === "open").length + this.creating.size;
-    if (open >= this.cfg.MAX_OPEN_MARKETS) throw new HttpError(429, "too_many_markets", "Gerade zu viele offene Märkte");
+    if (open >= this.cfg.MAX_OPEN_MARKETS) throw new HttpError(429, "too_many_markets", "Too many open markets right now");
 
     const q = proposal.question;
     const pools = parimutuel.seedPools(proposal.probabilities, seed, ADA);

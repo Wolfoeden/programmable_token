@@ -26,9 +26,9 @@ async function main() {
       : undefined;
   const store = new Store(cfg.DATA_DIR);
   const tracker = new Tracker(adsb);
-  const traffic = new CamTraffic(adsb);
+  const traffic = new CamTraffic(adsb, routes);
   const index = new ChainIndex(ctx);
-  const maker = new MarketMaker(cfg, ctx, index, adsb, routes, schedule, store, tracker);
+  const maker = new MarketMaker(cfg, ctx, index, adsb, routes, schedule, store, tracker, traffic);
   const oracle = new Oracle(ctx, tracker, schedule, store);
   const batcher = new Batcher(ctx);
 

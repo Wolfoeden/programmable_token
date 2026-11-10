@@ -16,13 +16,13 @@ export interface AirportPanelProps {
 }
 
 const STATUS: Record<string, string> = {
-  scheduled: "planmäßig",
-  delayed: "verspätet",
+  scheduled: "scheduled",
+  delayed: "delayed",
   boarding: "Boarding",
-  departed: "gestartet",
-  arrived: "gelandet",
-  cancelled: "gestrichen",
-  diverted: "umgeleitet",
+  departed: "departed",
+  arrived: "arrived",
+  cancelled: "cancelled",
+  diverted: "diverted",
   unknown: "",
 };
 
@@ -33,7 +33,7 @@ export function AirportPanel(p: AirportPanelProps) {
   );
 
   return (
-    <aside className="panel" aria-label="Flughafen">
+    <aside className="panel" aria-label="Airport">
       <div className="panel-head">
         <div>
           <h2>{data?.airport.iata || p.icao}</h2>
@@ -72,12 +72,12 @@ export function AirportPanel(p: AirportPanelProps) {
                       type="button"
                       className="btn small flat"
                       disabled={p.busy}
-                      title="Markt: Fällt der Flug aus?"
+                      title="Market: will this flight be cancelled?"
                       onClick={() =>
                         p.onCreate({ kind: "scheduled", market: "cancellation", flightNumber: d.flightNumber, origin: d.origin, scheduledDeparture: d.scheduledDeparture })
                       }
                     >
-                      {t.cancellationQ} <span className="num muted">{formatPercent(d.quotes.cancellation)}</span>
+                      {t.cancellationQ} <span className="num muted">{formatPercent(d.quotes.cancellation, "en-US")}</span>
                     </button>
                   )}
                   {d.quotes.delay !== null && !has("delay") && !d.simulated && (
@@ -85,12 +85,12 @@ export function AirportPanel(p: AirportPanelProps) {
                       type="button"
                       className="btn small flat"
                       disabled={p.busy}
-                      title="Markt: Landet der Flug mehr als 15 Minuten zu spät?"
+                      title="Market: will this flight land more than 15 minutes late?"
                       onClick={() =>
                         p.onCreate({ kind: "scheduled", market: "delay", flightNumber: d.flightNumber, origin: d.origin, scheduledDeparture: d.scheduledDeparture })
                       }
                     >
-                      {t.delayQ} <span className="num muted">{formatPercent(d.quotes.delay)}</span>
+                      {t.delayQ} <span className="num muted">{formatPercent(d.quotes.delay, "en-US")}</span>
                     </button>
                   )}
                 </div>

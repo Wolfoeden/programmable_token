@@ -164,7 +164,7 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
   });
 
   app.post("/api/markets", async (req: FastifyRequest) => {
-    if (!marketRequests.allow(req.ip)) throw new HttpError(429, "rate_limited", "Zu viele neue Märkte, bitte später erneut versuchen");
+    if (!marketRequests.allow(req.ip)) throw new HttpError(429, "rate_limited", "Too many new markets, please try again later");
     const body = z
       .discriminatedUnion("kind", [
         z.object({ kind: z.literal("landing_before"), hex: z.string() }),
@@ -202,7 +202,7 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
     const { icao } = z.object({ icao: z.string().length(4) }).parse(req.params);
     const airport = airportByIcao(icao);
     if (!airport) throw new HttpError(404, "airport_not_found");
-    if (!s.schedule) throw new HttpError(501, "schedule_unavailable", "Kein Flugplan-Anbieter konfiguriert (AERODATABOX_KEY)");
+    if (!s.schedule) throw new HttpError(501, "schedule_unavailable", "No schedule provider configured (AERODATABOX_KEY)");
     const t = Date.now();
     const flights = await s.schedule.departures(airport.icao, t, t + 12 * 3600_000);
     const markets = allMarketDtos();
@@ -236,8 +236,8 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
   const walletLucid = async (body: z.infer<typeof WalletBody>) => s.ctx.userLucid(bech32(body.address), body.utxos);
   const requireMarket = (id: string, forDirectUse = false) => {
     const m = s.index.market(id);
-    if (!m) throw new HttpError(404, "market_not_found", "Markt noch nicht bestätigt oder unbekannt");
-    if (forDirectUse && s.index.isStale(id)) throw new HttpError(409, "market_updating", "Markt wird gerade aktualisiert, bitte gleich nochmal");
+    if (!m) throw new HttpError(404, "market_not_found", "Market not confirmed yet or unknown");
+    if (forDirectUse && s.index.isStale(id)) throw new HttpError(409, "market_updating", "Market is updating, please try again shortly");
     return m;
   };
 
@@ -249,7 +249,7 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
       mode: z.enum(["order", "direct"]).default("order"),
     }).parse(req.body);
     const stake = BigInt(body.stake);
-    if (stake < 1_000_000n) throw new HttpError(422, "stake_too_small", "Mindesteinsatz 1 ADA");
+    if (stake < 1_000_000n) throw new HttpError(422, "stake_too_small", "Minimum stake is 1 ADA");
     const m = requireMarket(body.marketId, body.mode === "direct");
     const lucid = await walletLucid(body);
     const tx =
@@ -268,7 +268,7 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
     const holdings: Assets = {};
     for (const u of utxos) for (const [k, v] of Object.entries(u.assets)) holdings[k] = (holdings[k] ?? 0n) + v;
     const positions = positionsIn(s.ctx.contracts, holdings, m.datum.marketId);
-    if (positions.size === 0) throw new HttpError(422, "nothing_to_claim", "Keine Positionen in diesem Markt");
+    if (positions.size === 0) throw new HttpError(422, "nothing_to_claim", "No positions in this market");
     if (body.mode === "direct") return toJson({ tx: (await buildClaim(lucid, s.ctx.contracts, m, positions)).toCBOR(), value: claimValue(m.datum, positions) });
     const tokens: Assets = {};
     for (const [outcome, q] of positions) tokens[unit(s.ctx.contracts.marketHash, positionName(m.datum.marketId, outcome))] = q;

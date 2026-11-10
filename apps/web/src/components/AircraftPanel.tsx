@@ -31,7 +31,7 @@ export function AircraftPanel(p: AircraftPanelProps) {
   const sorted = [...p.markets].sort((x, y) => (x.phase === "open" ? -1 : 0) - (y.phase === "open" ? -1 : 0));
 
   return (
-    <aside className="panel" aria-label="Flugdetails">
+    <aside className="panel" aria-label="Flight details">
       <div className="panel-head">
         <div>
           <h2>{a?.callsign ?? p.hex.toUpperCase()}</h2>

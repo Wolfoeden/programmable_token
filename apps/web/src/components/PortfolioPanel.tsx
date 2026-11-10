@@ -39,12 +39,12 @@ export function PortfolioPanel(p: PortfolioPanelProps) {
           return (
             <div className="market" key={pos.marketId}>
               <div className="market-head">
-                <h3>{m ? m.title.de : pos.marketId.slice(0, 12)}</h3>
+                <h3>{m ? m.title.en : pos.marketId.slice(0, 12)}</h3>
                 <div className="list">
                   {pos.holdings.map((h) => (
                     <div key={h.outcome} className="quote">
                       <span>
-                        {m?.labels.de[h.outcome] ?? `#${h.outcome}`} · <span className="num">{ada(h.quantity)}</span>
+                        {m?.labels.en[h.outcome] ?? `#${h.outcome}`} · <span className="num">{ada(h.quantity)}</span>
                       </span>
                       {m?.phase === "open" || m?.phase === "closed" ? (
                         <span className="num muted">
@@ -57,7 +57,7 @@ export function PortfolioPanel(p: PortfolioPanelProps) {
                 <div className="actions">
                   {m && (
                     <button type="button" className="btn small flat" onClick={() => p.onOpenMarket(m)}>
-                      Markt öffnen
+                      Open market
                     </button>
                   )}
                   {m && (m.phase === "resolved" || m.phase === "void") && claimable > 0n && (
@@ -75,10 +75,10 @@ export function PortfolioPanel(p: PortfolioPanelProps) {
         <div className="list">
           {data?.orders.map((o) => (
             <div className="row" key={o.ref}>
-              <span className="time">{o.order.kind === "bet" ? "Wette" : "Auszahlung"}</span>
+              <span className="time">{o.order.kind === "bet" ? "Bet" : "Claim"}</span>
               <div className="what">
                 <div className="t num">
-                  {o.order.kind === "bet" ? `${ada(o.order.stake)} auf #${o.order.outcome}` : "Positionen eingereicht"}
+                  {o.order.kind === "bet" ? `${ada(o.order.stake)} on #${o.order.outcome}` : "Positions submitted"}
                 </div>
                 <div className="s">{o.marketId.slice(0, 12)}…</div>
               </div>

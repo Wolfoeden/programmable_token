@@ -47,7 +47,7 @@ export function WalletDialog({ demo, onPick, onClose }: WalletDialogProps) {
             <span>{w.name}</span>
           </button>
         ))}
-        {demo && browser.length > 0 && <p className="note">Im Demo-Modus läuft die Blockchain simuliert im Server. Browser-Wallets funktionieren nur auf dem Testnetz.</p>}
+        {demo && browser.length > 0 && <p className="note">In demo mode the blockchain is simulated on the server. Browser wallets only work on the testnet.</p>}
         <button type="button" className="btn flat" onClick={onClose}>
           {t.close}
         </button>

@@ -2,10 +2,10 @@ import { formatAda, formatOdds, formatPercent } from "@flightradar/core/format";
 
 export { formatAda, formatOdds, formatPercent };
 
-export const ada = (lovelace: string | bigint, digits = 2) => formatAda(BigInt(lovelace), "de-DE", digits);
+export const ada = (lovelace: string | bigint, digits = 2) => formatAda(BigInt(lovelace), "en-US", digits);
 
 export function clock(ms: number): string {
-  return new Date(ms).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+  return new Date(ms).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
 }
 
 export function utcClock(ms: number): string {
@@ -22,7 +22,7 @@ export function countdown(ms: number): string {
 }
 
 export function feet(ft: number | undefined): string {
-  return ft === undefined ? "–" : `${Math.round(ft).toLocaleString("de-DE")} ft`;
+  return ft === undefined ? "–" : `${Math.round(ft).toLocaleString("en-US")} ft`;
 }
 
 export function knots(kt: number | undefined): string {
@@ -32,5 +32,5 @@ export function knots(kt: number | undefined): string {
 export function fpm(v: number | undefined): string {
   if (v === undefined) return "–";
   const r = Math.round(v / 50) * 50;
-  return `${r > 0 ? "+" : ""}${r.toLocaleString("de-DE")} ft/min`;
+  return `${r > 0 ? "+" : ""}${r.toLocaleString("en-US")} ft/min`;
 }

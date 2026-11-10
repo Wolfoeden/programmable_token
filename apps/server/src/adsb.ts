@@ -104,7 +104,7 @@ export class AdsbClient implements AdsbSource {
   }
 
   byHex(hexes: string[]): Promise<Aircraft[]> {
-    return this.hexes(hexes, this.mapThrottle, false);
+    return this.hexes(hexes, this.mapThrottle, true);
   }
 
   track(hexes: string[]): Promise<Aircraft[]> {

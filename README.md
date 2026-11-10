@@ -22,7 +22,9 @@ Hinter einem HTTPS-Proxy braucht Node 22 zusätzlich `NODE_USE_ENV_PROXY=1`.
 
 ## Welche Flüge die Karte zeigt
 
-Die Karte zeigt nur Flüge, die an einem Flughafen mit öffentlicher Live-Kamera landen oder starten, dazu alle Flüge mit offenem Markt. Die Liste der Flughäfen steht in `packages/core/src/webcams.ts`. Der Server fragt pro Flughafen reihum einmal ab, alle Besucher bekommen dieselbe kleine Liste, und ohne Besucher pausiert die Abfrage. Das hält Last und Datenmenge klein.
+Die Website ist englischsprachig. Sie zeigt nur Flüge, die innerhalb der nächsten Stunde an einem von fünf Flughäfen mit Livestream landen: London Heathrow, Lanzarote, Las Vegas, Tokio Haneda und Madeira. Dazu kommen alle Flüge mit offenem Markt. Nur auf diese Flüge kann man wetten, und nur für diese Flughäfen gibt es den Stream-Link.
+
+Ein Flug zählt, wenn er auf den Flughafen zufliegt, sinkt, laut Routendaten dort landet und die geschätzte Ankunft unter 60 Minuten liegt. Die Liste steht in `packages/core/src/webcams.ts`. Abflugtafeln und Ausfall-Märkte sind abgeschaltet.
 
 ## Was es gibt
 

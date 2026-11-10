@@ -40,11 +40,11 @@ class FakeAdsb implements AdsbSource {
 
 class FakeRoutes implements RouteSource {
   async lookup(callsign: string): Promise<Route | null> {
-    return callsign === "BAW902" ? { callsign, flightNumber: "BA902", airline: "British Airways", origin: "EGLL", destination: "EDDF" } : null;
+    return callsign === "SWR9" ? { callsign, flightNumber: "LX9", airline: "Swiss", origin: "KLAX", destination: "KLAS" } : callsign === "BAW902" ? { callsign, flightNumber: "BA902", airline: "British Airways", origin: "EDDF", destination: "EGLL" } : null;
   }
 }
 
-const FRA = airportByIcao("EDDF")!;
+const FRA = airportByIcao("EGLL")!;
 const HEX = "4007f1";
 
 let ctx: ChainContext;
@@ -88,7 +88,7 @@ describe("server pipeline (emulator, fake flight data)", () => {
     adsb = new FakeAdsb();
     const store = new Store(cfg.DATA_DIR);
     tracker = new Tracker(adsb);
-    traffic = new CamTraffic(adsb);
+    traffic = new CamTraffic(adsb, new FakeRoutes());
     index = new ChainIndex(ctx);
     maker = new MarketMaker(cfg, ctx, index, adsb, new FakeRoutes(), undefined, store, tracker);
     oracle = new Oracle(ctx, tracker, undefined, store);
@@ -96,12 +96,21 @@ describe("server pipeline (emulator, fake flight data)", () => {
     app = await buildApi({ cfg, ctx, index, adsb, routes: new FakeRoutes(), schedule: undefined, store, maker, traffic, tracker });
     // BA902 cruising towards Frankfurt, 600 km west of it.
     const now = ctx.now();
-    const p = destinationPoint(FRA, 270, 600);
-    adsb.planes.set(HEX, { hex: HEX, callsign: "BAW902", lat: p.lat, lon: p.lon, altitudeFt: 36000, onGround: false, groundSpeedKt: 450, trackDeg: 90, timestamp: now });
+    const p = destinationPoint(FRA, 90, 250);
+    adsb.planes.set(HEX, { hex: HEX, callsign: "BAW902", lat: p.lat, lon: p.lon, altitudeFt: 24000, onGround: false, groundSpeedKt: 420, trackDeg: 270, verticalRateFpm: -1500, timestamp: now });
   });
 
   afterAll(async () => {
     await app?.close();
+  });
+
+  it("refuses markets on flights that are not landing at a live-stream airport soon", async () => {
+    const far = destinationPoint(FRA, 90, 1500);
+    adsb.planes.set("4c0001", { hex: "4c0001", callsign: "BAW902", lat: far.lat, lon: far.lon, altitudeFt: 37000, onGround: false, groundSpeedKt: 450, trackDeg: 270, timestamp: ctx.now() });
+    const res = await app.inject({ method: "POST", url: "/api/markets", payload: { kind: "landing_before", hex: "4c0001" } });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error).toBe("not_eligible");
+    adsb.planes.delete("4c0001");
   });
 
   it("creates a seeded landing market on request", async () => {
@@ -117,16 +126,16 @@ describe("server pipeline (emulator, fake flight data)", () => {
   });
 
   it("shows only webcam-airport movements and flights with markets", async () => {
-    const zrh = airportByIcao("LSZH")!;
-    const p = destinationPoint(zrh, 0, 60);
-    adsb.planes.set("4b1234", { hex: "4b1234", callsign: "SWR9", lat: p.lat, lon: p.lon, altitudeFt: 9000, onGround: false, groundSpeedKt: 250, trackDeg: 180, verticalRateFpm: -1200, timestamp: ctx.now() });
+    const las = airportByIcao("KLAS")!;
+    const p = destinationPoint(las, 0, 60);
+    adsb.planes.set("4b1234", { hex: "4b1234", callsign: "SWR9", lat: p.lat, lon: p.lon, altitudeFt: 12000, onGround: false, groundSpeedKt: 250, trackDeg: 180, verticalRateFpm: -1200, timestamp: ctx.now() });
     adsb.planes.set("4b9999", { hex: "4b9999", callsign: "OVER1", lat: p.lat, lon: p.lon, altitudeFt: 38000, onGround: false, groundSpeedKt: 450, trackDeg: 90, verticalRateFpm: 0, timestamp: ctx.now() });
     await call("GET", "/api/aircraft"); // marks a client as watching
     for (let i = 0; i < 20; i++) await traffic.step();
     const { aircraft } = await call<{ aircraft: Array<{ hex: string; phase?: string; airport?: string; markets?: number }> }>("GET", "/api/aircraft");
-    expect(aircraft.find((a) => a.hex === "4b1234")).toMatchObject({ phase: "landing", airport: "LSZH" });
+    expect(aircraft.find((a) => a.hex === "4b1234")).toMatchObject({ phase: "landing", airport: "KLAS" });
     expect(aircraft.find((a) => a.hex === "4b9999")).toBeUndefined();
-    expect(aircraft.find((a) => a.hex === HEX)).toMatchObject({ markets: 1 }); // 600 km out, shown because it has a market
+    expect(aircraft.find((a) => a.hex === HEX)).toMatchObject({ markets: 1 }); // shown because it has a market
     adsb.planes.delete("4b1234");
     adsb.planes.delete("4b9999");
   });
@@ -146,9 +155,9 @@ describe("server pipeline (emulator, fake flight data)", () => {
     const { market } = await call<{ market: { question: { threshold: number }; pools: string[]; feeBps: number } }>("GET", `/api/markets/${marketId}`);
     const t = market.question.threshold - 10 * 60_000;
     // final approach and a ground position at Frankfurt ten minutes before the line
-    adsb.planes.set(HEX, { hex: HEX, callsign: "BAW902", lat: 50.04, lon: 8.66, altitudeFt: 1100, onGround: false, groundSpeedKt: 145, verticalRateFpm: -700, trackDeg: 250, timestamp: t - 60_000 });
+    adsb.planes.set(HEX, { hex: HEX, callsign: "BAW902", lat: 51.47, lon: -0.38, altitudeFt: 1100, onGround: false, groundSpeedKt: 145, verticalRateFpm: -700, trackDeg: 250, timestamp: t - 60_000 });
     await tracker.poll(t);
-    adsb.planes.set(HEX, { hex: HEX, callsign: "BAW902", lat: 50.04, lon: 8.58, onGround: true, groundSpeedKt: 40, trackDeg: 250, timestamp: t });
+    adsb.planes.set(HEX, { hex: HEX, callsign: "BAW902", lat: 51.4705, lon: -0.46, onGround: true, groundSpeedKt: 40, trackDeg: 250, timestamp: t });
     await tracker.poll(t + 1000);
     await oracle.tick(index.live);
     await block();

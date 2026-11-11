@@ -64,6 +64,8 @@ export function UpcomingList(p: UpcomingListProps) {
   const pools = [...p.markets].sort(
     (a, b) => (ORDER[a.phase] ?? 3) - (ORDER[b.phase] ?? 3) || (a.phase === "resolved" || a.phase === "void" ? b.closeTime - a.closeTime : a.closeTime - b.closeTime),
   );
+  // Only flights that still take a bet; closed ones drop out of the list.
+  const openFlights = p.flights.filter((f) => p.isOpen(f));
   const openPools = p.markets.filter((m) => (m.phase === "open" || m.phase === "creating") && m.closeTime > now).length;
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -85,14 +87,14 @@ export function UpcomingList(p: UpcomingListProps) {
         <span className="label-narrow" aria-hidden>
           ✈
         </span>
-        <span className="count num">{p.flights.length}</span>
+        <span className="count num">{openFlights.length}</span>
         {openPools > 0 && <span className="count open num">{openPools} open</span>}
       </button>
       {open && (
         <div className="upcoming-list" role="dialog" aria-label="Live flights">
           <div className="up-tabs" role="tablist">
             <button type="button" role="tab" aria-selected={tab === "flights"} className={tab === "flights" ? "active" : ""} onClick={() => setTab("flights")}>
-              Live flights <span className="num">{p.flights.length}</span>
+              Live flights <span className="num">{openFlights.length}</span>
             </button>
             <button type="button" role="tab" aria-selected={tab === "pools"} className={tab === "pools" ? "active" : ""} onClick={() => setTab("pools")}>
               Pools <span className="num">{p.markets.length}</span>
@@ -118,15 +120,15 @@ export function UpcomingList(p: UpcomingListProps) {
               <div className="upcoming-foot">Percentages are each side’s share of the pool (market-based, not a probability).</div>
             </>
           )}
-          {tab === "flights" && <div className="upcoming-head">Landing within the hour</div>}
-          {tab === "flights" && p.flights.length === 0 && (
+          {tab === "flights" && <div className="upcoming-head">Open for betting · landing within the hour</div>}
+          {tab === "flights" && openFlights.length === 0 && (
             <div className="upcoming-empty">
-              {p.status === "loading" ? "Loading flights …" : p.status === "ok" ? "No flight is landing at a live-stream airport within the hour." : "Flight data is not reachable right now."}
+              {p.status === "loading" ? "Loading flights …" : p.status === "ok" ? "No flight is open for betting right now." : "Flight data is not reachable right now."}
             </div>
           )}
           {tab === "flights" && (
           <ul>
-            {p.flights.map((f) => {
+            {openFlights.map((f) => {
               const min = f.etaMs ? Math.max(0, Math.round((f.etaMs - now) / 60_000)) : null;
               const betOpen = p.isOpen(f);
               return (

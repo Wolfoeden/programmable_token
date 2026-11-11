@@ -1082,6 +1082,156 @@ details.rules summary {
   margin-left: 6px;
 }
 
+/* ## Simple flight panel */
+
+.panel-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.step-btn {
+  display: none;
+  font-size: 22px;
+}
+
+.outcomes.duo {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.outcomes.duo .outcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 14px 8px;
+  text-align: center;
+  border: 0;
+}
+
+.outcomes.duo .outcome .bar {
+  display: none;
+}
+
+.outcomes.duo .outcome .label {
+  color: inherit !important;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.outcomes.duo .outcome .prob {
+  font-size: 24px;
+  font-weight: 750;
+}
+
+.outcome.side-0 {
+  background: #1f9d63;
+  color: #04170e;
+}
+
+.outcome.side-1 {
+  background: #d9474a;
+  color: #1c0405;
+}
+
+.outcome.side-0:hover:not(:disabled) {
+  background: #25b673;
+}
+
+.outcome.side-1:hover:not(:disabled) {
+  background: #ec5558;
+}
+
+.outcomes.duo .outcome.selected {
+  outline: 3px solid var(--text);
+  outline-offset: 2px;
+}
+
+.outcomes.duo .outcome:disabled {
+  opacity: 0.55;
+}
+
+.duo-note {
+  text-align: center;
+  padding: 0 10px;
+}
+
+/* ## Site menu */
+
+.site-menu {
+  position: relative;
+}
+
+.menu-btn {
+  display: grid;
+  place-items: center;
+  padding: 8px 10px;
+}
+
+.menu-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.menu-list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  min-width: 210px;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  z-index: 30;
+}
+
+.menu-list > button,
+.menu-list > a {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.menu-list > button:hover,
+.menu-list > a:hover {
+  background: var(--surface-3);
+}
+
+.menu-list hr {
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 4px 0;
+}
+
+.menu-wallet {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.menu-wallet img {
+  width: 18px;
+  height: 18px;
+}
+
 /* ## Now landing (watch mode) */
 
 .accent-btn {
@@ -1325,6 +1475,15 @@ details.rules summary {
 }
 
 @media (max-width: 720px) {
+  .app.flight-open .switcher {
+    display: none;
+  }
+  .step-btn {
+    display: grid;
+  }
+  .panel.simple .panel-title {
+    text-align: center;
+  }
   .switcher {
     top: 98px;
     left: 10px;

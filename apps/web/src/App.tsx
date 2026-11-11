@@ -8,6 +8,7 @@ import { FlightSwitcher } from "./components/FlightSwitcher";
 import { INFO_PAGES, InfoDialog, type InfoPage } from "./components/InfoPages";
 import { MarketCard, type PreparedBet } from "./components/MarketCard";
 import { PortfolioPanel } from "./components/PortfolioPanel";
+import { SiteMenu } from "./components/SiteMenu";
 import { nextApproach, WatchView } from "./components/WatchView";
 import { flightName, flightState, stateText } from "./arrivals";
 import { useNow } from "./hooks";
@@ -280,7 +281,7 @@ export function App() {
   };
 
   return (
-    <div className="app">
+    <div className={`app${selection?.kind === "aircraft" ? " flight-open" : ""}`}>
       <MapView
         selectedHex={selectedHex}
         destination={detail?.destination ?? null}
@@ -302,35 +303,21 @@ export function App() {
           <span aria-hidden>▶</span> <span className="label-wide">Now landing</span>
           <span className="label-narrow">Live</span>
         </button>
-        <button type="button" className="btn" onClick={() => setAbout(true)} aria-label={t.aboutTitle}>
-          ?
-        </button>
-        {wallet && (
-          <button type="button" className="btn" onClick={() => setSelection({ kind: "portfolio" })}>
-            <span className="label-wide">{t.myBets}</span>
-            <span aria-hidden>🎟</span>
+        {!wallet && (
+          <button type="button" className="btn primary" onClick={() => setWalletDialog(true)}>
+            <span className="label-wide">Connect</span>Wallet
           </button>
         )}
-        <button
-          type="button"
-          className={`btn${wallet ? "" : " primary"}`}
-          onClick={() => {
-            if (wallet) {
-              setWallet(null);
-              remember(null);
-            } else setWalletDialog(true);
+        <SiteMenu
+          wallet={wallet}
+          onConnect={() => setWalletDialog(true)}
+          onDisconnect={() => {
+            setWallet(null);
+            remember(null);
           }}
-          title={wallet ? t.disconnect : undefined}
-        >
-          {wallet?.icon && <img src={wallet.icon} alt="" />}
-          {wallet ? (
-            wallet.name
-          ) : (
-            <>
-              <span className="label-wide">Connect</span>Wallet
-            </>
-          )}
-        </button>
+          onMyBets={() => setSelection({ kind: "portfolio" })}
+          onAbout={() => setAbout(true)}
+        />
       </header>
 
       {health && (
@@ -363,6 +350,14 @@ export function App() {
           onConfirm={onConfirm}
           onCreate={onCreate}
           onClose={() => setSelection(null)}
+          position={{ index: flights.findIndex((f) => f.hex === selection.hex), count: flights.length }}
+          onStep={(dir) => {
+            if (flights.length === 0) return;
+            const i = flights.findIndex((f) => f.hex === selection.hex);
+            const next = i < 0 ? (dir > 0 ? 0 : flights.length - 1) : (i + dir + flights.length) % flights.length;
+            setNotice(null);
+            selectFlight(flights[next]!);
+          }}
         />
       )}
       {selection?.kind === "airport" && (
@@ -418,13 +413,6 @@ export function App() {
         </span>
       </div>
       <footer className="attribution">
-        <nav className="legal-links" aria-label="Site information">
-          {INFO_PAGES.map((p) => (
-            <a key={p.id} href={`#${p.id}`}>
-              {p.label}
-            </a>
-          ))}
-        </nav>
         <span>{t.attribution}</span>
       </footer>
       {watch && (

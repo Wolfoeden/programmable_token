@@ -23,6 +23,8 @@ export interface PreparedBet {
 export interface MarketCardProps {
   market: MarketDto;
   highlight?: boolean;
+  /** Question, two coloured buttons with the pool shares; details folded away. */
+  simple?: boolean;
   busy?: boolean;
   onPrepare: (market: MarketDto, outcome: number, stakeLovelace: bigint) => Promise<PreparedBet | null>;
   onConfirm: (bet: PreparedBet) => Promise<boolean>;
@@ -101,7 +103,7 @@ function Confirm({ bet, busy, onBack, onConfirm }: { bet: PreparedBet; busy?: bo
   );
 }
 
-export function MarketCard({ market: m, highlight, busy, onPrepare, onConfirm }: MarketCardProps) {
+export function MarketCard({ market: m, highlight, simple, busy, onPrepare, onConfirm }: MarketCardProps) {
   const now = useNow(1000);
   const [outcome, setOutcome] = useState<number | null>(null);
   const [stakeAda, setStakeAda] = useState("10");
@@ -112,20 +114,22 @@ export function MarketCard({ market: m, highlight, busy, onPrepare, onConfirm }:
   const q = outcome !== null && stake > 0n ? quote(pools, outcome, BigInt(m.feeBps), stake) : null;
 
   return (
-    <div className={`market${highlight ? " highlight" : ""}`} id={`market-${m.id}`}>
+    <div className={`market${highlight ? " highlight" : ""}${simple ? " simple" : ""}`} id={`market-${m.id}`}>
       <div className="market-head">
         <h3>{m.title.en}</h3>
         <div className="market-meta">
           <PhaseLine m={m} now={now} />
-          <span className="num">
-            {t.pool} {ada(m.total, 0)}
-          </span>
-          {m.pending.orders > 0 && <span>· {t.pendingOrders(m.pending.orders)}</span>}
+          {!simple && (
+            <span className="num">
+              {t.pool} {ada(m.total, 0)}
+            </span>
+          )}
+          {!simple && m.pending.orders > 0 && <span>· {t.pendingOrders(m.pending.orders)}</span>}
           {m.simulated && <span className="badge">{t.simulated}</span>}
         </div>
       </div>
-      <div className="pool-note">Pool share · odds if betting closed now. Market-based, not a probability of the event.</div>
-      <div className="outcomes" role="radiogroup" aria-label={m.title.en}>
+      {!simple && <div className="pool-note">Pool share · odds if betting closed now. Market-based, not a probability of the event.</div>}
+      <div className={`outcomes${simple ? " duo" : ""}`} role="radiogroup" aria-label={m.title.en}>
         {m.labels.en.map((label, i) => {
           const p = m.probabilities[i] ?? 0;
           const won = m.phase === "resolved" && m.winner === i;
@@ -135,7 +139,8 @@ export function MarketCard({ market: m, highlight, busy, onPrepare, onConfirm }:
               type="button"
               role="radio"
               aria-checked={outcome === i}
-              className={`outcome${outcome === i ? " selected" : ""}${won ? " winner" : ""}`}
+              className={`outcome${outcome === i ? " selected" : ""}${won ? " winner" : ""}${simple ? ` side-${i}` : ""}`}
+              title="Share of all stakes on this outcome (market-based, not a probability of the event)"
               disabled={!open || !!prepared}
               onClick={() => setOutcome(i)}
             >
@@ -146,7 +151,7 @@ export function MarketCard({ market: m, highlight, busy, onPrepare, onConfirm }:
               <span className="prob num" title="Share of all stakes on this outcome">
                 {formatPercent(p, "en-US")}
               </span>
-              <span className="odds num">×{formatOdds(m.odds[i] ?? NaN, "en-US")}</span>
+              {!simple && <span className="odds num">×{formatOdds(m.odds[i] ?? NaN, "en-US")}</span>}
             </button>
           );
         })}
@@ -183,7 +188,7 @@ export function MarketCard({ market: m, highlight, busy, onPrepare, onConfirm }:
               </span>
             </div>
           )}
-          <div className="note">{t.quoteNote}</div>
+          {!simple && <div className="note">{t.quoteNote}</div>}
         </div>
       )}
       {prepared && (
@@ -199,8 +204,9 @@ export function MarketCard({ market: m, highlight, busy, onPrepare, onConfirm }:
           }}
         />
       )}
+      {simple && <div className="pool-note duo-note">Pool shares, market-based · not a probability</div>}
       <RulesPanel m={m} />
-      {m.seed && (
+      {!simple && m.seed && (
         <div className="pool-note">
           {t.seedModel}: {m.seed.probabilities.map((p) => formatPercent(p, "en-US")).join(" / ")} from the model ({m.seed.model}).
         </div>

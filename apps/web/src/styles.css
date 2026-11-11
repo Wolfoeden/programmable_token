@@ -1541,7 +1541,7 @@ details.rules summary {
 }
 
 @media (max-width: 720px) {
-  .app.flight-open .switcher {
+  .app.panel-open .switcher {
     display: none;
   }
   .step-btn {

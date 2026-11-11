@@ -47,3 +47,11 @@ export function headingDelta(a: number, b: number): number {
   const d = Math.abs(a - b) % 360;
   return d > 180 ? 360 - d : d;
 }
+
+/** Distance of `p` from the great circle through `a` and `b` (km, unsigned). */
+export function crossTrackKm(p: LatLon, a: LatLon, b: LatLon): number {
+  const d13 = distanceKm(a, p) / EARTH_RADIUS_KM;
+  const t13 = (bearingDeg(a, p) * Math.PI) / 180;
+  const t12 = (bearingDeg(a, b) * Math.PI) / 180;
+  return Math.abs(Math.asin(Math.sin(d13) * Math.sin(t13 - t12)) * EARTH_RADIUS_KM);
+}

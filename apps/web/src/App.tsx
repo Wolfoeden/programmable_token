@@ -283,7 +283,7 @@ export function App() {
 
 
   return (
-    <div className={`app${selection?.kind === "aircraft" ? " flight-open" : ""}`}>
+    <div className={`app${selection ? " panel-open" : ""}`}>
       <MapView
         selectedHex={selectedHex}
         destination={detail?.destination ?? null}

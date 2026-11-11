@@ -100,8 +100,9 @@ describe("server pipeline (emulator, fake flight data)", () => {
     app = await buildApi({ cfg, ctx, index, adsb, routes: new FakeRoutes(), schedule: undefined, store, maker, traffic, tracker, shadow });
     // BA902 cruising towards Frankfurt, 600 km west of it.
     const now = ctx.now();
-    const p = destinationPoint(FRA, 90, 250);
-    adsb.planes.set(HEX, { hex: HEX, callsign: "BAW902", lat: p.lat, lon: p.lon, altitudeFt: 24000, onGround: false, groundSpeedKt: 420, trackDeg: 270, verticalRateFpm: -1500, timestamp: now });
+    // On the Frankfurt → London line (route checks need the aircraft on its leg).
+    const p = destinationPoint(FRA, bearingDeg(FRA, airportByIcao("EDDF")!), 250);
+    adsb.planes.set(HEX, { hex: HEX, callsign: "BAW902", lat: p.lat, lon: p.lon, altitudeFt: 24000, onGround: false, groundSpeedKt: 420, trackDeg: bearingDeg(p, FRA), verticalRateFpm: -1500, timestamp: now });
   });
 
   afterAll(async () => {
@@ -131,7 +132,7 @@ describe("server pipeline (emulator, fake flight data)", () => {
 
   it("shows only webcam-airport movements and flights with markets", async () => {
     const las = airportByIcao("KLAS")!;
-    const p = destinationPoint(las, 0, 60);
+    const p = destinationPoint(las, 0, 50);
     adsb.planes.set("4b1234", { hex: "4b1234", callsign: "SWR9", lat: p.lat, lon: p.lon, altitudeFt: 12000, onGround: false, groundSpeedKt: 250, trackDeg: 180, verticalRateFpm: -1200, timestamp: ctx.now() });
     adsb.planes.set("4b9999", { hex: "4b9999", callsign: "OVER1", lat: p.lat, lon: p.lon, altitudeFt: 38000, onGround: false, groundSpeedKt: 450, trackDeg: 90, verticalRateFpm: 0, timestamp: ctx.now() });
     await call("GET", "/api/aircraft"); // marks a client as watching

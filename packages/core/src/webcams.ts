@@ -4,9 +4,9 @@
  * a market. The live-stream link is shown for these airports only.
  */
 import type { Aircraft } from "./aircraft.js";
-import { airportByIcao, type Airport } from "./airports.js";
+import { AIRPORTS, airportByIcao, type Airport } from "./airports.js";
 import { estimateEta, type EtaEstimate } from "./eta.js";
-import { bearingDeg, distanceKm, headingDelta } from "./geo.js";
+import { bearingDeg, crossTrackKm, distanceKm, headingDelta } from "./geo.js";
 
 export interface Webcam {
   icao: string;
@@ -50,14 +50,54 @@ export type Movement = "landing";
 export const SHORT_HAUL_KM = 700;
 
 /**
- * Route data can be stale (callsigns get reused for other routes). The
- * aircraft must lie roughly between origin and destination.
+ * Route data can be wrong for today: airlines reuse a flight number for
+ * several legs a day, and route databases know only one (e.g. SWA2697 is
+ * listed as Oakland → Las Vegas but also flies to Phoenix, almost the same
+ * direction from Oakland). So the aircraft must
+ * - be well under way, so that destinations in a similar direction differ
+ *   (at least 120 km, or 30 % of a shorter route, from the origin),
+ * - lie within 40 km of the origin–destination line (airways are not
+ *   straight), and
+ * - head for the destination (±15°) while more than 60 km out.
+ * On the last 60 km approach patterns are allowed to wander.
  */
-export function onRoute(ac: { lat: number; lon: number }, origin: string | undefined, destination: string | undefined): boolean {
+export const ROUTE_MAX_OFFSET_KM = 40;
+export const ROUTE_MAX_HEADING_DEG = 15;
+
+/** Is the aircraft flying the leg origin → destination, judged by geometry alone? */
+function fitsLeg(ac: { lat: number; lon: number; trackDeg?: number }, o: Airport, d: Airport): boolean {
+  const route = distanceKm(o, d);
+  const toDest = distanceKm(ac, d);
+  const fromOrigin = distanceKm(o, ac);
+  if (fromOrigin + toDest > 1.25 * route + 60) return false;
+  if (toDest <= 60) return true;
+  if (crossTrackKm(ac, o, d) > ROUTE_MAX_OFFSET_KM) return false;
+  if (ac.trackDeg !== undefined && headingDelta(ac.trackDeg, bearingDeg(ac, d)) > ROUTE_MAX_HEADING_DEG) return false;
+  return true;
+}
+
+/** Alternatives closer than this to the destination are not told apart (the oracle voids a landing there). */
+const AMBIGUITY_MIN_SEPARATION_KM = 80;
+
+export function onRoute(ac: { lat: number; lon: number; trackDeg?: number }, origin: string | undefined, destination: string | undefined): boolean {
   const o = airportByIcao(origin);
   const d = airportByIcao(destination);
-  if (!o || !d) return false;
-  return distanceKm(o, ac) + distanceKm(ac, d) <= 1.25 * distanceKm(o, d) + 60;
+  if (!o || !d || !fitsLeg(ac, o, d)) return false;
+  if (distanceKm(ac, d) <= 60) return true;
+  // Ambiguous while the position fits a leg from the same origin to another airport.
+  const reach = distanceKm(o, d) * 1.6 + 100;
+  for (const a of AIRPORTS) {
+    if (a.size !== 2 || a.icao === o.icao || a.icao === d.icao) continue;
+    if (Math.abs(a.lat - o.lat) * 111 > reach) continue; // cheap pre-filter
+    const oa = distanceKm(o, a);
+    if (oa < 150 || oa > reach || distanceKm(a, d) < AMBIGUITY_MIN_SEPARATION_KM) continue;
+    if (distanceKm(ac, a) <= 60) continue;
+    // An airport beyond the destination on the same line is no real
+    // alternative: the descent profile (checked elsewhere) tells them apart.
+    if (oa > distanceKm(o, d) && crossTrackKm(d, o, a) < 40) continue;
+    if (fitsLeg(ac, o, a)) return false;
+  }
+  return true;
 }
 
 export function isShortHaul(origin: string | undefined, destination: string | undefined): boolean {

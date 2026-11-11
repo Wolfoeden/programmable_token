@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { airportByIcao, classifyMovement, isShortHaul, onRoute, destinationPoint, landingWithinHour, WEBCAMS, webcamAirports, webcamFor, type Aircraft } from "../src/index.js";
+import { airportByIcao, bearingDeg, classifyMovement, isShortHaul, onRoute, destinationPoint, landingWithinHour, WEBCAMS, webcamAirports, webcamFor, type Aircraft } from "../src/index.js";
 
 const LHR = airportByIcao("EGLL")!;
 const at = (km: number, bearing: number, o: Partial<Aircraft>): Aircraft => {
@@ -40,5 +40,25 @@ describe("live-stream airports", () => {
   it("rejects stale routes where the aircraft is nowhere near the line", () => {
     expect(onRoute({ lat: 50.9, lon: 2.2 }, "EBBR", "EGLL")).toBe(true); // over the Channel coast
     expect(onRoute({ lat: 48.2, lon: -2.0 }, "EBBR", "EGLL")).toBe(false); // over Brittany
+  });
+
+  it("rejects a reused flight number flying to another airport in a similar direction", () => {
+    // SWA2697 listed as Oakland → Las Vegas, actually flying Oakland → Phoenix (about 15° apart).
+    const OAK = airportByIcao("KOAK")!;
+    const LAS = airportByIcao("KLAS")!;
+    const PHX = airportByIcao("KPHX")!;
+    const toPhx = (km: number) => {
+      const p = destinationPoint(OAK, bearingDeg(OAK, PHX), km);
+      return { ...p, trackDeg: bearingDeg(p, PHX) };
+    };
+    for (const km of [50, 150, 250, 400]) expect(onRoute(toPhx(km), "KOAK", "KLAS")).toBe(false);
+    // The real Oakland → Las Vegas flight passes once under way.
+    const toLas = (km: number) => {
+      const p = destinationPoint(OAK, bearingDeg(OAK, LAS), km);
+      return { ...p, trackDeg: bearingDeg(p, LAS) };
+    };
+    // Too early to tell: Phoenix fits the position as well.
+    for (const km of [50, 150]) expect(onRoute(toLas(km), "KOAK", "KLAS")).toBe(false);
+    for (const km of [300, 450, 600]) expect(onRoute(toLas(km), "KOAK", "KLAS")).toBe(true);
   });
 });

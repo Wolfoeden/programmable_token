@@ -24,7 +24,12 @@ Hinter einem HTTPS-Proxy braucht Node 22 zusätzlich `NODE_USE_ENV_PROXY=1`.
 
 Die Website ist englischsprachig. Sie zeigt nur Flüge, die innerhalb der nächsten Stunde an einem von fünf Flughäfen mit Livestream landen: London Heathrow, Lanzarote, Las Vegas, Tokio Haneda und Madeira. Dazu kommen alle Flüge mit offenem Markt. Nur auf diese Flüge kann man wetten, und nur für diese Flughäfen gibt es den Stream-Link.
 
-Ein Flug zählt, wenn er auf den Flughafen zufliegt, laut Routendaten dort landet, die geschätzte Ankunft unter 60 Minuten liegt und sein Abflughafen höchstens rund eine Flugstunde entfernt ist, also bis 700 km. Liegt das Flugzeug weit neben der Linie zwischen Abflug und Ziel, gelten die Routendaten als veraltet, und der Flug wird ausgeblendet. Die Abflughäfen erscheinen als blaue Rauten, mit einer gestrichelten Linie zum Flugzeug und einer grünen zum Live-Flughafen. Die Liste steht in `packages/core/src/webcams.ts`. Abflugtafeln und Ausfall-Märkte sind abgeschaltet.
+Ein Flug zählt, wenn er auf den Flughafen zufliegt, laut Routendaten dort landet, die geschätzte Ankunft unter 60 Minuten liegt und sein Abflughafen höchstens rund eine Flugstunde entfernt ist, also bis 700 km. Routendaten sind oft falsch für den heutigen Tag: Airlines wie Southwest fliegen mit einer Flugnummer mehrere Teilstrecken, die Routendatenbank kennt nur eine. Ein Beispiel ist SWA2697, gelistet als Oakland → Las Vegas, tatsächlich unterwegs nach Phoenix. Ein Flug zählt deshalb nur, wenn alle drei Bedingungen gelten:
+- Er liegt höchstens 40 km neben der Linie zwischen Abflug und Ziel.
+- Er fliegt auf ±15° genau auf das Ziel zu.
+- Seine Position passt zu keiner Strecke vom selben Abflughafen zu einem anderen großen Flughafen.
+
+Solange zwei Ziele infrage kommen, erscheint der Flug nicht und bekommt keinen Markt. Landet ein Flug trotzdem woanders, wird der Markt annulliert, und alle Einsätze gehen 1:1 zurück. Die Abflughäfen erscheinen als blaue Rauten, mit einer gestrichelten Linie zum Flugzeug und einer grünen zum Live-Flughafen. Die Liste steht in `packages/core/src/webcams.ts`. Abflugtafeln und Ausfall-Märkte sind abgeschaltet.
 
 ### Landungen live verfolgen
 

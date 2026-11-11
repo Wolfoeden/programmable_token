@@ -80,7 +80,7 @@ export function AircraftPanel(p: AircraftPanelProps) {
         <div className="panel-title">
           <h2>{a?.flightNumber || route?.flightNumber || a?.callsign || p.hex.toUpperCase()}</h2>
           <div className="sub num">
-            {[p.position && p.position.index >= 0 ? `Flight ${p.position.index + 1} of ${p.position.count}` : null, route?.airline].filter(Boolean).join(" · ")}
+            {[p.position && p.position.index >= 0 ? `Flight ${p.position.index + 1} of ${p.position.count}` : null, route?.airline, a?.registration].filter(Boolean).join(" · ")}
           </div>
         </div>
         {p.onStep && (

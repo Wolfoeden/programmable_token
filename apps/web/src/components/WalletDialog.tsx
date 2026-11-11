@@ -40,14 +40,22 @@ export function WalletDialog({ demo, onPick, onClose }: WalletDialogProps) {
           </>
         )}
         <div className="section-title">{t.browserWallets}</div>
-        {browser.length === 0 && <p>{t.noWallets}</p>}
-        {browser.map((w) => (
-          <button key={w.id} type="button" className="wallet-option" onClick={() => onPick(w)}>
-            {w.icon && <img src={w.icon} alt="" />}
-            <span>{w.name}</span>
-          </button>
-        ))}
-        {demo && browser.length > 0 && <p className="note">In demo mode the blockchain is simulated on the server. Browser wallets only work on the testnet.</p>}
+        {demo ? (
+          <p className="note">
+            Not available right now. This site runs in demo mode: the blockchain is simulated on the server, so the funds in Lace, Eternl or any other real
+            wallet (Preview, Preprod or Mainnet) do not exist here. Use a demo wallet above; it has play money.
+          </p>
+        ) : (
+          <>
+            {browser.length === 0 && <p>{t.noWallets}</p>}
+            {browser.map((w) => (
+              <button key={w.id} type="button" className="wallet-option" onClick={() => onPick(w)}>
+                {w.icon && <img src={w.icon} alt="" />}
+                <span>{w.name}</span>
+              </button>
+            ))}
+          </>
+        )}
         <button type="button" className="btn flat" onClick={onClose}>
           {t.close}
         </button>

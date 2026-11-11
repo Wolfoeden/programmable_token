@@ -30,7 +30,7 @@ import {
   unit,
 } from "@flightradar/chain";
 import type { AdsbSource } from "./adsb.js";
-import { encodeUtxo, type ChainContext } from "./chain.js";
+import { decodeUtxo, encodeUtxo, type ChainContext } from "./chain.js";
 import type { ChainIndex } from "./chainIndex.js";
 import type { Config } from "./config.js";
 import { aircraftDto, marketDto, pendingMarketDto } from "./dto.js";
@@ -287,7 +287,42 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
 
   // ## Wallet transactions (unsigned CBOR for CIP-30 wallets)
 
-  const walletLucid = async (body: z.infer<typeof WalletBody>) => s.ctx.userLucid(bech32(body.address), body.utxos);
+  /**
+   * The user's wallet for building a transaction. Rejects wallets whose coins
+   * cannot exist on this server's chain, with a message saying why, instead
+   * of failing later at submission ("UTxO does not exist").
+   */
+  const walletLucid = async (body: z.infer<typeof WalletBody>) => {
+    const addr = bech32(body.address);
+    if (s.cfg.DEMO) {
+      if (!s.ctx.demoWallets.some((d) => d.account.address === addr)) {
+        throw new HttpError(
+          409,
+          "demo_real_wallet",
+          "This site runs in demo mode on a simulated blockchain. Coins from a real wallet (Preview, Preprod or Mainnet) do not exist there. Please use a demo wallet.",
+        );
+      }
+      return s.ctx.userLucid(addr, body.utxos);
+    }
+    const mainnetAddr = addr.startsWith("addr1") || addr.startsWith("stake1");
+    if (mainnetAddr !== (s.ctx.network === "Mainnet")) {
+      throw new HttpError(409, "wrong_network", `Your wallet is on ${mainnetAddr ? "Mainnet" : "a testnet"}, this site runs on ${s.ctx.network}.`);
+    }
+    // Preview and Preprod addresses look the same: check that the coins exist here.
+    const known = new Set((await s.ctx.provider.getUtxos(addr)).map((u) => `${u.txHash}#${u.outputIndex}`));
+    const mine = body.utxos.filter((cbor) => {
+      const u = decodeUtxo(cbor);
+      return known.has(`${u.txHash}#${u.outputIndex}`);
+    });
+    if (body.utxos.length > 0 && mine.length === 0) {
+      throw new HttpError(
+        409,
+        "wallet_other_network",
+        `None of your wallet's coins exist on ${s.ctx.network}. Switch the wallet to ${s.ctx.network} (Preview and Preprod are separate testnets) and get test ADA from the ${s.ctx.network} faucet.`,
+      );
+    }
+    return s.ctx.userLucid(addr, mine);
+  };
   const requireMarket = (id: string, forDirectUse = false) => {
     const m = s.index.market(id);
     if (!m) throw new HttpError(404, "market_not_found", "Market not confirmed yet or unknown");
@@ -304,8 +339,8 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
     }).parse(req.body);
     const stake = BigInt(body.stake);
     if (stake < 1_000_000n) throw new HttpError(422, "stake_too_small", "Minimum stake is 1 ADA");
-    const m = requireMarket(body.marketId, body.mode === "direct");
     const lucid = await walletLucid(body);
+    const m = requireMarket(body.marketId, body.mode === "direct");
     const tx =
       body.mode === "direct"
         ? await buildBet(lucid, s.ctx.contracts, m, body.outcome, stake, now())
@@ -356,7 +391,19 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
     // forwards to the provider without holding any key.
     lucid.selectWallet.fromAddress(s.ctx.operator.address, []);
     const signed = await lucid.fromTx(body.tx).assemble([body.witness]).complete();
-    const txHash = await signed.submit();
+    const txHash = await signed.submit().catch((e: unknown) => {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/does not exist or was already spent|BadInputsUTxO/i.test(msg)) {
+        throw new HttpError(
+          409,
+          "utxo_spent",
+          s.cfg.DEMO
+            ? "A coin in this transaction does not exist on the simulated demo chain. Use a demo wallet; real wallets do not work in demo mode."
+            : `A coin in this transaction was already spent or does not exist on ${s.ctx.network}. Wait a moment and try again.`,
+        );
+      }
+      throw e;
+    });
     setTimeout(() => void s.index.refresh(), 1500);
     return { txHash };
   });

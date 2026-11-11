@@ -92,6 +92,7 @@ const errors: Record<string, string> = {
   nothing_to_claim: "Nothing to claim.",
   market_not_found: "Market not confirmed yet, please wait a moment.",
   race_size: "A race needs 2 to 4 aircraft.",
+  demo_real_wallet: "This site runs in demo mode on a simulated blockchain, so coins from a real wallet don't exist here. Disconnect and choose a demo wallet (Alice, Bob or Carol).",
   needs_two_flights: "A race needs at least two aircraft.",
   same_flight: "An aircraft cannot race itself.",
   too_late: "Too late for this flight.",

@@ -124,6 +124,15 @@ export function App() {
     };
   }, [selectedHex]);
 
+  // A real wallet cannot bet on the simulated demo chain.
+  useEffect(() => {
+    if (health?.demo && wallet?.kind === "cip30") {
+      setWallet(null);
+      remember(null);
+      toast("info", "Demo mode: real wallets don't work on the simulated chain. Choose a demo wallet.");
+    }
+  }, [health?.demo, wallet?.kind]);
+
   // Reconnect a remembered demo wallet.
   useEffect(() => {
     const id = remembered();
@@ -185,7 +194,7 @@ export function App() {
       const w = opt.kind === "demo" ? demoWallet(opt.name) : await connectBrowserWallet(opt.id);
       if (w.kind === "cip30" && health) {
         const expected = health.network === "Mainnet" ? 1 : 0;
-        if (health.demo || w.networkId !== expected) toast("error", t.wrongNetwork);
+        if (w.networkId !== expected) toast("error", t.wrongNetwork);
       }
       setWallet(w);
       remember(w.id);

@@ -8,15 +8,18 @@ import type { StreamInfo } from "../types";
  * (privacy-friendly youtube-nocookie domain) and falls back to a link to
  * the original source when the video cannot be embedded.
  */
+/** Once the viewer has loaded a player in this tab, later streams load directly. */
+let consented = false;
+
 export function LiveStream({ icao }: { icao: string }) {
   const cam = webcamFor(icao);
   const [info, setInfo] = useState<StreamInfo | null>(null);
   const [failed, setFailed] = useState(false);
-  const [play, setPlay] = useState(false);
+  const [play, setPlay] = useState(consented);
   useEffect(() => {
     setInfo(null);
     setFailed(false);
-    setPlay(false);
+    setPlay(consented);
     let alive = true;
     api
       .stream(icao)
@@ -62,7 +65,10 @@ export function LiveStream({ icao }: { icao: string }) {
           allowFullScreen
         />
       ) : (
-        <button type="button" className="stream-frame stream-load" onClick={() => setPlay(true)}>
+        <button type="button" className="stream-frame stream-load" onClick={() => {
+            consented = true;
+            setPlay(true);
+          }}>
           <span className="stream-play" aria-hidden>
             ▶
           </span>

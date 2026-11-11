@@ -127,7 +127,21 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
       const { aircraft: _a, ...movement } = x;
       out.set(ac.hex, aircraftDto(ac, counts.get(ac.hex) ?? 0, movement));
     }
-    return { now: Date.now(), status: s.traffic.status(), updatedAt: s.traffic.updatedAt || null, aircraft: [...out.values()] };
+    return {
+      now: Date.now(),
+      status: s.traffic.status(),
+      updatedAt: s.traffic.updatedAt || null,
+      aircraft: [...out.values()],
+      arrivals: s.traffic.arrivalList().filter((a) => a.status !== "approaching"),
+    };
+  });
+
+  /** Recorded paths (lon, lat, ms) of up to four listed flights, for race and watch views. */
+  app.get("/api/tracks", async (req) => {
+    const { hex } = z.object({ hex: z.string().regex(/^[0-9a-f]{6}(,[0-9a-f]{6}){0,3}$/i) }).parse(req.query);
+    const tracks: Record<string, ReturnType<typeof s.traffic.track>> = {};
+    for (const h of hex.toLowerCase().split(",")) tracks[h] = s.traffic.track(h);
+    return { tracks };
   });
 
   app.get("/api/aircraft/:hex", async (req) => {

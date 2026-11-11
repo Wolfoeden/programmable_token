@@ -4,7 +4,7 @@
  * slow round-robin, shared by all clients, and paused while nobody is
  * watching. This keeps upstream calls, CPU and payload small and constant.
  */
-import { isShortHaul, landingWithinHour, onRoute, MOVEMENT_RADIUS_NM, webcamAirports, type Aircraft, type Airport, type Movement } from "@flightradar/core";
+import { distanceKm, isShortHaul, landingWithinHour, onRoute, MOVEMENT_RADIUS_NM, webcamAirports, type Aircraft, type Airport, type Movement } from "@flightradar/core";
 import type { AdsbSource } from "./adsb.js";
 import type { RouteSource } from "./routes.js";
 
@@ -21,6 +21,47 @@ export interface Shown {
   etaSigmaMs: number;
 }
 
+/**
+ * What happened to a flight after it was listed. "approaching": on the
+ * list. "final": off the list (inside the last minute, or a go-around) but
+ * still airborne. "landed": first ADS-B ground report within 6 km of the
+ * airport. "lost": no ground report and no signal for 5 minutes; the
+ * landing is then unconfirmed.
+ */
+export type ArrivalStatus = "approaching" | "final" | "landed" | "lost";
+
+export interface Arrival {
+  hex: string;
+  airport: string;
+  callsign?: string;
+  flightNumber?: string;
+  origin?: string;
+  type?: string;
+  status: ArrivalStatus;
+  lat: number;
+  lon: number;
+  altitudeFt?: number;
+  /** Last position report, unix ms. */
+  lastSeenAt: number;
+  /** Time of the first ground report at the airport (status landed). */
+  landedAt?: number;
+  /** When the status became landed or lost. */
+  endedAt?: number;
+}
+
+/** A position along a flight's path: lon, lat, unix ms. */
+export type TrackPoint = [number, number, number];
+
+/** Ground reports further out than this do not count as landing here. */
+const LANDED_RADIUS_KM = 6;
+/** No position for this long after leaving the list: landing unconfirmed. */
+const LOST_AFTER_MS = 5 * 60_000;
+/** Airborne off the list for this long (e.g. holding): give up. */
+const FINAL_GIVE_UP_MS = 20 * 60_000;
+/** Ended arrivals stay visible this long. */
+const KEEP_ENDED_MS = 30 * 60_000;
+const MAX_TRACK_POINTS = 150;
+
 /** What the map can say about its data right now. */
 export type TrafficStatus = "loading" | "ok" | "unavailable";
 
@@ -32,6 +73,8 @@ export class CamTraffic {
   private perAirport = new Map<string, { at: number; list: Shown[] }>();
   private next = 0;
   private lastClientAt = 0;
+  private arrivals = new Map<string, Arrival>();
+  private tracks = new Map<string, TrackPoint[]>();
   /** Airports refreshed at least once since the list went active. */
   private refreshed = new Set<string>();
   updatedAt = 0;
@@ -112,8 +155,86 @@ export class CamTraffic {
     if (!failed) {
       this.perAirport.set(airport.icao, { at: Date.now(), list: shown });
       this.updatedAt = Date.now();
+      this.follow(airport, shown, list);
     }
     this.refreshed.add(airport.icao);
+  }
+
+  /** Update arrivals at this airport from one fresh answer. */
+  private follow(airport: Airport, shown: Shown[], raw: Aircraft[], now = Date.now()): void {
+    const listed = new Set<string>();
+    for (const s of shown) {
+      const ac = s.aircraft;
+      listed.add(ac.hex);
+      const prev = this.arrivals.get(ac.hex);
+      if (prev && prev.airport !== airport.icao && prev.status !== "approaching") this.arrivals.delete(ac.hex);
+      this.arrivals.set(ac.hex, {
+        hex: ac.hex,
+        airport: airport.icao,
+        status: "approaching",
+        lat: ac.lat,
+        lon: ac.lon,
+        lastSeenAt: ac.timestamp,
+        ...(ac.altitudeFt !== undefined ? { altitudeFt: ac.altitudeFt } : {}),
+        ...(ac.callsign ? { callsign: ac.callsign } : {}),
+        ...(s.flightNumber ? { flightNumber: s.flightNumber } : {}),
+        ...(s.origin ? { origin: s.origin } : {}),
+        ...(ac.type ? { type: ac.type } : {}),
+      });
+      this.record(ac);
+    }
+    for (const a of this.arrivals.values()) {
+      if (a.airport !== airport.icao || listed.has(a.hex) || a.status === "landed" || a.status === "lost") continue;
+      const ac = raw.find((x) => x.hex === a.hex);
+      if (ac && ac.timestamp >= a.lastSeenAt) {
+        this.record(ac);
+        a.lat = ac.lat;
+        a.lon = ac.lon;
+        a.lastSeenAt = ac.timestamp;
+        if (ac.altitudeFt !== undefined) a.altitudeFt = ac.altitudeFt;
+        else delete a.altitudeFt;
+        if (ac.onGround && (ac.groundSpeedKt ?? 0) <= 200 && distanceKm(ac, airport) <= LANDED_RADIUS_KM) {
+          a.status = "landed";
+          a.landedAt = ac.timestamp;
+          a.endedAt = now;
+          continue;
+        }
+        a.status = "final";
+      } else if (a.status === "approaching") {
+        a.status = "final";
+      }
+      if (now - a.lastSeenAt > LOST_AFTER_MS || (ac && !ac.onGround && now - a.lastSeenAt < 60_000 && distanceKm(ac, airport) > 150)) {
+        a.status = "lost";
+        a.endedAt = now;
+      }
+    }
+    // Off the list and airborne for too long, or long finished: forget.
+    for (const [hex, a] of this.arrivals) {
+      const gone = (a.endedAt !== undefined && now - a.endedAt > KEEP_ENDED_MS) || (a.status === "final" && now - a.lastSeenAt > FINAL_GIVE_UP_MS);
+      if (gone) {
+        this.arrivals.delete(hex);
+        this.tracks.delete(hex);
+      }
+    }
+  }
+
+  private record(ac: Aircraft): void {
+    const pts = this.tracks.get(ac.hex) ?? [];
+    const last = pts[pts.length - 1];
+    if (last && last[2] >= ac.timestamp) return;
+    pts.push([Math.round(ac.lon * 1e5) / 1e5, Math.round(ac.lat * 1e5) / 1e5, ac.timestamp]);
+    if (pts.length > MAX_TRACK_POINTS) pts.splice(0, pts.length - MAX_TRACK_POINTS);
+    this.tracks.set(ac.hex, pts);
+  }
+
+  /** Arrivals at live-stream airports: listed, on final, landed or lost. */
+  arrivalList(): Arrival[] {
+    return [...this.arrivals.values()].map((a) => ({ ...a }));
+  }
+
+  /** Positions recorded since the flight was first listed. */
+  track(hex: string): TrackPoint[] {
+    return this.tracks.get(hex)?.slice() ?? [];
   }
 
   /** A fresh position from the shared list, to avoid an extra upstream call. */

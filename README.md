@@ -26,6 +26,14 @@ Die Website ist englischsprachig. Sie zeigt nur Flüge, die innerhalb der nächs
 
 Ein Flug zählt, wenn er auf den Flughafen zufliegt, laut Routendaten dort landet, die geschätzte Ankunft unter 60 Minuten liegt und sein Abflughafen höchstens rund eine Flugstunde entfernt ist, also bis 700 km. Liegt das Flugzeug weit neben der Linie zwischen Abflug und Ziel, gelten die Routendaten als veraltet, und der Flug wird ausgeblendet. Die Abflughäfen erscheinen als blaue Rauten, mit einer gestrichelten Linie zum Flugzeug und einer grünen zum Live-Flughafen. Die Liste steht in `packages/core/src/webcams.ts`. Abflugtafeln und Ausfall-Märkte sind abgeschaltet.
 
+### Landungen live verfolgen
+
+- **Flug bleibt ausgewählt**: Verlässt der gewählte Flug die Liste, bleiben Panel, Stream und Karte bei ihm. Der Server verfolgt ihn weiter. Die Landung gilt als bestätigt, sobald die erste ADS-B-Bodenmeldung im Umkreis von 6 km um den Flughafen eintrifft. Kommt 5 Minuten lang weder Bodenmeldung noch Signal, zeigt die Seite „nicht bestätigt". Zum nächsten Flug wechselt die Seite nur auf Klick.
+- **Now landing**: Der Stream des Zielflughafens bekommt viel Platz. Daneben stehen eine maßstäbliche Anflugkarte mit der aufgezeichneten Spur, Flugnummer, Flugzeugtyp und die geschätzte Restzeit. Nach der Landung bietet die Ansicht den nächsten Anflug an, wechselt aber nicht selbst.
+- **Who lands first?**: Hier wählt man zwei oder drei ankommende Flüge. Die Seite schlägt dazu ein knappes Paar am selben Flughafen vor. Die Spuren erscheinen farbig auf der Karte und in der Rennansicht. Man setzt auf den Markt und sieht danach zwei getrennte Ergebnisse: die beobachtete Reihenfolge der Bodenmeldungen und das vom Oracle abgerechnete Ergebnis.
+
+Die Daten dafür liefert `/api/aircraft` im Feld `arrivals`. Die Spuren bis zu vier Flügen stehen unter `/api/tracks?hex=…`.
+
 ## Was es gibt
 
 | Markt | Frage | Daten für die Entscheidung | Startquote aus |

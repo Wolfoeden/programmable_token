@@ -1,5 +1,5 @@
 /** Thin client for the server API. */
-import type { AircraftDetail, AircraftResponse, BetCosts, DeparturesResponse, Health, MarketDto, Portfolio, StreamInfo } from "./types";
+import type { AircraftDetail, AircraftResponse, TrackPoint, BetCosts, DeparturesResponse, Health, MarketDto, Portfolio, StreamInfo } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -32,6 +32,7 @@ export interface WalletPayload {
 export const api = {
   health: () => request<Health>("/api/health"),
   aircraft: () => request<AircraftResponse>("/api/aircraft"),
+  tracks: (hexes: string[]) => request<{ tracks: Record<string, TrackPoint[]> }>(`/api/tracks?hex=${hexes.join(",")}`),
   stream: (icao: string) => request<StreamInfo>(`/api/streams/${icao}`),
   aircraftDetail: (hex: string) => request<AircraftDetail>(`/api/aircraft/${hex}`),
   markets: () => request<{ now: number; markets: MarketDto[] }>("/api/markets"),

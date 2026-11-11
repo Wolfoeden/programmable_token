@@ -60,7 +60,35 @@ export interface AircraftResponse {
   status: "loading" | "ok" | "unavailable";
   updatedAt: number | null;
   aircraft: AircraftDto[];
+  /** Flights that left the list: on final, landed or lost. */
+  arrivals?: Arrival[];
 }
+
+/**
+ * approaching: on the list. final: off the list but still airborne.
+ * landed: first ADS-B ground report at the airport. lost: no ground report
+ * and no signal for 5 minutes (landing unconfirmed).
+ */
+export type ArrivalStatus = "approaching" | "final" | "landed" | "lost";
+
+export interface Arrival {
+  hex: string;
+  airport: string;
+  callsign?: string;
+  flightNumber?: string;
+  origin?: string;
+  type?: string;
+  status: ArrivalStatus;
+  lat: number;
+  lon: number;
+  altitudeFt?: number;
+  lastSeenAt: number;
+  landedAt?: number;
+  endedAt?: number;
+}
+
+/** lon, lat, unix ms */
+export type TrackPoint = [number, number, number];
 
 export interface StreamInfo {
   icao: string;

@@ -22,6 +22,8 @@ export interface AircraftPanelProps {
   onConfirm: MarketCardProps["onConfirm"];
   onCreate: (body: unknown) => Promise<unknown>;
   onStartRace: () => void;
+  /** Set when the flight has left the list: what happened since. */
+  arrivalNote?: string | null;
   onClose: () => void;
 }
 
@@ -87,6 +89,11 @@ export function AircraftPanel(p: AircraftPanelProps) {
           </div>
         )}
 
+        {p.arrivalNote && (
+          <div className="watch-state held" role="status">
+            {p.arrivalNote}
+          </div>
+        )}
         <div className="arrival">
           <div className="k">Expected arrival at {dest?.iata || destIcao || "destination"}</div>
           {zones ? (

@@ -7,10 +7,12 @@ export interface FlightSwitcherProps {
   status: DataStatus;
   onSelect: (a: AircraftDto) => void;
   notice: string | null;
+  /** The selected flight is no longer listed: its name and what is known. */
+  held?: { name: string; text: string } | null;
 }
 
 /** "Flight 2 of 8" with previous / next, over the bettable flights sorted by arrival. */
-export function FlightSwitcher({ flights, selectedHex, status, onSelect, notice }: FlightSwitcherProps) {
+export function FlightSwitcher({ flights, selectedHex, status, onSelect, notice, held }: FlightSwitcherProps) {
   const idx = flights.findIndex((f) => f.hex === selectedHex);
   const cur = idx >= 0 ? flights[idx] : undefined;
   const step = (d: number) => {
@@ -40,7 +42,11 @@ export function FlightSwitcher({ flights, selectedHex, status, onSelect, notice 
           </button>
           <button type="button" className="switcher-main" onClick={() => (cur ? onSelect(cur) : step(1))}>
             <span className="switcher-count num">
-              {cur ? `Flight ${idx + 1} of ${flights.length}` : `${flights.length} flight${flights.length === 1 ? "" : "s"} landing soon`}
+              {cur
+                ? `Flight ${idx + 1} of ${flights.length}`
+                : held
+                  ? `Following ${held.name} · ${flights.length} other flight${flights.length === 1 ? "" : "s"} landing soon`
+                  : `${flights.length} flight${flights.length === 1 ? "" : "s"} landing soon`}
             </span>
             <span className="switcher-what num">
               {cur ? (
@@ -48,6 +54,8 @@ export function FlightSwitcher({ flights, selectedHex, status, onSelect, notice 
                   <strong>{cur.flightNumber || cur.callsign}</strong> → {cur.airport}
                   {cur.etaMs ? ` · ETA ${bothZones(cur.etaMs).utc}` : ""}
                 </>
+              ) : held ? (
+                "Next: show the soonest arrival"
               ) : (
                 "Show the next arrival"
               )}
@@ -65,7 +73,8 @@ export function FlightSwitcher({ flights, selectedHex, status, onSelect, notice 
             : "The flight data source is not responding: this list may be out of date."}
         </div>
       )}
-      {notice && <div className="switcher-msg small">{notice}</div>}
+      {held && <div className="switcher-msg small" role="status">{held.text}</div>}
+      {notice && !held && <div className="switcher-msg small">{notice}</div>}
     </div>
   );
 }

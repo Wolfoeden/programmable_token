@@ -84,27 +84,8 @@ button {
   pointer-events: auto;
 }
 
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 14px 8px 10px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(10px);
-  white-space: nowrap;
-}
 
-.brand strong {
-  font-size: 15px;
-  letter-spacing: 0.01em;
-}
 
-.brand .fun {
-  color: var(--accent);
-}
 
 .badge {
   display: inline-flex;
@@ -138,25 +119,8 @@ button {
   border-color: rgba(255, 107, 107, 0.3);
 }
 
-.search {
-  flex: 1;
-  min-width: 0;
-  max-width: 360px;
-}
 
-.search input {
-  width: 100%;
-  padding: 10px 14px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  box-shadow: var(--shadow);
-  outline: none;
-}
 
-.search input:focus {
-  border-color: var(--border-strong);
-}
 
 .spacer {
   flex: 1;
@@ -1118,9 +1082,251 @@ details.rules summary {
   margin-left: 6px;
 }
 
+/* ## Now landing (watch mode) */
+
+.accent-btn {
+  border-color: rgba(255, 197, 61, 0.45);
+  color: var(--accent);
+}
+
+.watch {
+  position: fixed;
+  inset: 12px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  background: rgba(11, 13, 16, 0.97);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.watch-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.watch-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 14px;
+  padding: 14px;
+}
+
+.watch-stream .stream-frame {
+  max-height: calc(100vh - 140px);
+}
+
+.watch-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.watch-title h2 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.watch-title .sub {
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.watch-empty {
+  margin: auto;
+  max-width: 460px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: center;
+  text-align: center;
+  color: var(--text-2);
+  padding: 24px;
+}
+
+.watch-state {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  font-size: 14px;
+}
+
+.watch-state.landed {
+  border-color: rgba(61, 220, 151, 0.5);
+  color: var(--yes);
+}
+
+.watch-state.lost,
+.watch-state.final,
+.watch-state.held {
+  border-color: rgba(255, 176, 32, 0.45);
+  color: var(--warn);
+}
+
+.watch-next {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+
+.watch-next .k,
+.race-result .k {
+  color: var(--text-3);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* ## Approach map */
+
+.radar {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.radar svg {
+  width: 100%;
+  max-width: 260px;
+  height: auto;
+}
+
+.radar figcaption {
+  color: var(--text-3);
+  font-size: 11px;
+  text-align: center;
+}
+
+.radar-ring {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.14);
+}
+
+.radar-axis {
+  stroke: rgba(255, 255, 255, 0.06);
+}
+
+.radar-airport {
+  fill: var(--bg);
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.radar-label {
+  fill: var(--text-3);
+  font-size: 10px;
+  font-family: var(--font);
+}
+
+.radar-label.strong {
+  fill: var(--accent);
+  font-weight: 600;
+}
+
+/* ## Race */
+
+.race-rows,
+.race-pick {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.race-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--c);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.race-row .race-dot {
+  background: var(--c);
+  margin-top: 5px;
+}
+
+.race-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.race-main .badge {
+  margin-left: 6px;
+}
+
+.race-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  flex: none;
+}
+
+.race-bar {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.race-bar > div {
+  height: 100%;
+  background: var(--c);
+  transition: width 1s linear;
+}
+
+.race-pick label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.race-suggest {
+  text-align: left;
+  white-space: normal;
+  border: 1px dashed rgba(255, 197, 61, 0.45);
+}
+
+.race-result {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+}
+
 @media (max-width: 720px) {
   .switcher {
-    top: 146px;
+    top: 98px;
     left: 10px;
     width: calc(100% - 20px);
   }
@@ -1148,25 +1354,11 @@ details.rules summary {
     left: 10px;
     right: 10px;
   }
-  .search {
-    order: 3;
-    flex-basis: 100%;
-    max-width: none;
-  }
-  .brand {
-    padding: 7px 12px 7px 9px;
-  }
-  .brand strong {
-    font-size: 14px;
-  }
-  .brand .badge {
-    display: none;
-  }
   .btn {
     padding: 8px 12px;
   }
   .banner {
-    top: 108px;
+    top: 60px;
   }
   .panel {
     top: auto;
@@ -1192,7 +1384,22 @@ details.rules summary {
   .banner .label-wide {
     display: none;
   }
-  .banner .label-narrow {
+  .banner .label-narrow,
+  .btn .label-narrow {
     display: inline;
+  }
+  .watch {
+    inset: 0;
+    border-radius: 0;
+  }
+  .watch-body {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+  .watch-side {
+    overflow: visible;
+  }
+  .radar svg {
+    max-width: 220px;
   }
 }

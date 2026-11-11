@@ -46,6 +46,38 @@ export interface AircraftDto {
   phase?: "landing" | "takeoff";
   airport?: string;
   origin?: string;
+  flightNumber?: string;
+  /** Model estimate of touchdown, unix ms (UTC), and one standard deviation. */
+  etaMs?: number;
+  etaSigmaMs?: number;
+}
+
+/** loading / ok / unavailable come from the server; error = server unreachable. */
+export type DataStatus = "loading" | "ok" | "unavailable" | "error";
+
+export interface AircraftResponse {
+  now: number;
+  status: "loading" | "ok" | "unavailable";
+  updatedAt: number | null;
+  aircraft: AircraftDto[];
+}
+
+export interface StreamInfo {
+  icao: string;
+  url: string;
+  videoId: string | null;
+  embeddable: boolean;
+  checkedAt: number;
+  reason?: string;
+}
+
+export interface BetCosts {
+  stake: string;
+  networkFee: string;
+  batcherFee: string;
+  deposit: string;
+  feeBps: string;
+  closeTime: number;
 }
 
 export interface AirportDto {

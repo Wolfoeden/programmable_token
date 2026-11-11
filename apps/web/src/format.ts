@@ -8,6 +8,19 @@ export function clock(ms: number): string {
   return new Date(ms).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
 }
 
+/** "20:14 UTC" plus the viewer's local time with its zone, e.g. "21:14 CET". */
+export function bothZones(ms: number): { utc: string; local: string } {
+  const local = new Date(ms).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZoneName: "short" });
+  return { utc: utcClock(ms), local };
+}
+
+export function ago(ms: number, now = Date.now()): string {
+  const s = Math.max(0, Math.round((now - ms) / 1000));
+  if (s < 60) return `${s} s ago`;
+  const m = Math.round(s / 60);
+  return m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`;
+}
+
 export function utcClock(ms: number): string {
   return `${new Date(ms).toISOString().slice(11, 16)} UTC`;
 }

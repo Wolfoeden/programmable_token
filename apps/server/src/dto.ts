@@ -135,12 +135,16 @@ export interface AircraftDto {
   airport?: string;
   /** Departure airport of a shown flight. */
   origin?: string;
+  flightNumber?: string;
+  /** Model estimate of touchdown (unix ms, UTC) and one standard deviation. */
+  etaMs?: number;
+  etaSigmaMs?: number;
 }
 
 export function aircraftDto(
   a: Aircraft,
   marketCount: number,
-  movement?: { phase: "landing" | "takeoff"; airport: string; origin?: string },
+  movement?: { phase: "landing" | "takeoff"; airport: string; origin?: string; flightNumber?: string; etaMs?: number; etaSigmaMs?: number },
 ): AircraftDto {
   const { squawk: _s, category: _c, ...rest } = a;
   return { ...rest, ...(marketCount > 0 ? { markets: marketCount } : {}), ...(movement ?? {}) };

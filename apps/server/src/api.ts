@@ -7,6 +7,7 @@ import { resolve } from "node:path";
 import { z } from "zod";
 import { addressFromHexOrBech32, getAddressDetails, Lucid, type Assets } from "@lucid-evolution/lucid";
 import {
+  webcamFor,
   airportByIcao,
   parimutuel,
   proposeCancellation,
@@ -17,6 +18,8 @@ import {
   buildBet,
   buildBetOrder,
   buildCancelOrder,
+  DEFAULT_BATCHER_FEE,
+  ORDER_DEPOSIT,
   buildClaim,
   buildClaimOrder,
   claimValue,
@@ -121,9 +124,10 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
     for (const x of s.traffic.list()) {
       const prev = out.get(x.aircraft.hex);
       const ac = prev && prev.timestamp > x.aircraft.timestamp ? { ...x.aircraft, ...prev } : x.aircraft;
-      out.set(ac.hex, aircraftDto(ac, counts.get(ac.hex) ?? 0, { phase: x.phase, airport: x.airport, ...(x.origin ? { origin: x.origin } : {}) }));
+      const { aircraft: _a, ...movement } = x;
+      out.set(ac.hex, aircraftDto(ac, counts.get(ac.hex) ?? 0, movement));
     }
-    return { now: Date.now(), aircraft: [...out.values()] };
+    return { now: Date.now(), status: s.traffic.status(), updatedAt: s.traffic.updatedAt || null, aircraft: [...out.values()] };
   });
 
   app.get("/api/aircraft/:hex", async (req) => {
@@ -133,13 +137,49 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
     const route = ac.callsign ? await s.routes.lookup(ac.callsign) : null;
     const markets = allMarketDtos().filter((m) => m.icao24.includes(ac.hex));
     const shown = s.traffic.list().find((x) => x.aircraft.hex === ac.hex);
+    const { aircraft: _a, ...movement } = shown ?? { aircraft: ac };
     return toJson({
-      aircraft: aircraftDto(ac, markets.length, shown && { phase: shown.phase, airport: shown.airport }),
+      aircraft: aircraftDto(ac, markets.length, shown ? (movement as Parameters<typeof aircraftDto>[2]) : undefined),
       route,
       origin: route ? airportByIcao(route.origin) ?? null : null,
       destination: route ? airportByIcao(route.destination) ?? null : null,
       markets,
     });
+  });
+
+  // ## Live streams
+
+  /**
+   * Whether a live-stream airport's video can be embedded. Uses YouTube's
+   * oEmbed endpoint: 200 = embeddable video, 401/403 = embedding disabled,
+   * 404 = removed or private. It cannot tell whether a live broadcast is on
+   * air right now; the player shows that itself.
+   */
+  const streamChecks = new Map<string, { at: number; value: { icao: string; url: string; videoId: string | null; embeddable: boolean; checkedAt: number; reason?: string } }>();
+  app.get("/api/streams/:icao", async (req) => {
+    const { icao } = z.object({ icao: z.string().length(4) }).parse(req.params);
+    const cam = webcamFor(icao);
+    if (!cam) throw new HttpError(404, "no_stream", "No live stream for this airport");
+    const hit = streamChecks.get(cam.icao);
+    if (hit && Date.now() - hit.at < 10 * 60_000) return hit.value;
+    const videoId = /[?&]v=([A-Za-z0-9_-]{11})/.exec(cam.url)?.[1] ?? null;
+    let embeddable = false;
+    let reason: string | undefined;
+    if (!videoId) reason = "The source is a channel page, not a single video, so it cannot be embedded.";
+    else {
+      try {
+        const res = await fetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}`, {
+          signal: AbortSignal.timeout(8000),
+        });
+        embeddable = res.ok;
+        if (!res.ok) reason = res.status === 404 ? "The video was removed or is private." : "The owner does not allow embedding.";
+      } catch {
+        reason = "The stream could not be checked right now.";
+      }
+    }
+    const value = { icao: cam.icao, url: cam.url, videoId, embeddable, checkedAt: Date.now(), ...(reason ? { reason } : {}) };
+    streamChecks.set(cam.icao, { at: Date.now(), value });
+    return value;
   });
 
   // ## Markets
@@ -257,7 +297,19 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
         ? await buildBet(lucid, s.ctx.contracts, m, body.outcome, stake, now())
         : await buildBetOrder(lucid, s.ctx.contracts, m, body.outcome, stake, now());
     const quote = parimutuel.quote(m.datum.pools, body.outcome, m.datum.feeBps, stake);
-    return toJson({ tx: tx.toCBOR(), quote: { payout: quote.payout, multiplier: quote.multiplier, probabilityAfter: quote.probabilityAfter } });
+    const networkFee = BigInt(tx.toTransaction().body().fee());
+    return toJson({
+      tx: tx.toCBOR(),
+      quote: { payout: quote.payout, multiplier: quote.multiplier, probabilityAfter: quote.probabilityAfter },
+      costs: {
+        stake,
+        networkFee,
+        batcherFee: body.mode === "direct" ? 0n : DEFAULT_BATCHER_FEE,
+        deposit: body.mode === "direct" ? 0n : ORDER_DEPOSIT,
+        feeBps: m.datum.feeBps,
+        closeTime: Number(m.datum.closeTime),
+      },
+    });
   });
 
   app.post("/api/tx/claim", async (req) => {

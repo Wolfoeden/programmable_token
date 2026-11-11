@@ -5,7 +5,7 @@ import type { Feature as GeoFeature, FeatureCollection, Point } from "geojson";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { destinationPoint, KM_PER_NM } from "@flightradar/core/geo";
 import { api } from "../api";
-import type { AircraftDto, AirportDto } from "../types";
+import type { AircraftDto, AirportDto, DataStatus } from "../types";
 import { greatCircle } from "./greatCircle";
 import { diamondImage, planeImage, ringImage } from "./icons";
 
@@ -24,6 +24,8 @@ export interface MapViewProps {
   onAirportClick: (icao: string) => void;
   onBackgroundClick: () => void;
   onAircraftUpdate: (list: AircraftDto[]) => void;
+  /** Data state after every poll: server status, or "error" if the server could not be reached. */
+  onStatus: (s: { status: DataStatus; updatedAt: number | null; at: number }) => void;
   flyTo: { lat: number; lon: number; zoom?: number; key: number } | null;
 }
 
@@ -263,13 +265,12 @@ export function MapView(props: MapViewProps) {
       inflight = true;
       try {
         const res = await api.aircraft();
-        // A transient empty answer (upstream hiccup) must not wipe the map.
-        if (res.aircraft.length === 0 && aircraft.current.size > 20) return;
+        propsRef.current.onStatus({ status: res.status, updatedAt: res.updatedAt, at: Date.now() });
         const next = new Map<string, AircraftDto>();
         for (const a of res.aircraft) next.set(a.hex, a);
-        // keep the selected aircraft even if it left the query area
+        // The server list is authoritative: a flight it no longer reports is
+        // gone (the app then moves the selection on and says so).
         const sel = propsRef.current.selectedHex;
-        if (sel && !next.has(sel) && aircraft.current.has(sel)) next.set(sel, aircraft.current.get(sel)!);
         aircraft.current = next;
         const s = sel ? next.get(sel) : undefined;
         if (s && trail.current.hex === sel) trail.current.points.push([s.lon, s.lat]);
@@ -277,6 +278,7 @@ export function MapView(props: MapViewProps) {
         render();
       } catch {
         // keep showing the last state; next poll retries
+        propsRef.current.onStatus({ status: "error", updatedAt: null, at: Date.now() });
       } finally {
         inflight = false;
         clearTimeout(timer);
@@ -380,7 +382,13 @@ export function MapView(props: MapViewProps) {
 
   useEffect(() => {
     if (!props.flyTo || !mapRef.current) return;
-    mapRef.current.flyTo({ center: [props.flyTo.lon, props.flyTo.lat], zoom: props.flyTo.zoom ?? Math.max(mapRef.current.getZoom(), 7) });
+    // Keep the aircraft clear of the side panel (desktop) or bottom sheet (mobile).
+    const mobile = window.innerWidth <= 720;
+    mapRef.current.flyTo({
+      center: [props.flyTo.lon, props.flyTo.lat],
+      zoom: props.flyTo.zoom ?? Math.max(mapRef.current.getZoom(), 7),
+      padding: mobile ? { top: 120, bottom: Math.round(window.innerHeight * 0.45), left: 20, right: 20 } : { top: 110, bottom: 40, left: 40, right: 440 },
+    });
   }, [props.flyTo?.key]);
 
   return <div ref={container} className="map" />;

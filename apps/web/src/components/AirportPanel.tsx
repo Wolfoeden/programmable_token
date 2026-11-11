@@ -4,13 +4,14 @@ import { usePoll } from "../hooks";
 import { errorText, t } from "../i18n";
 import type { MarketDto } from "../types";
 import { CamLink } from "./CamLink";
-import { MarketCard } from "./MarketCard";
+import { MarketCard, type MarketCardProps } from "./MarketCard";
 
 export interface AirportPanelProps {
   icao: string;
   markets: MarketDto[];
   busy: boolean;
-  onBet: (m: MarketDto, outcome: number, stake: bigint) => void;
+  onPrepare: MarketCardProps["onPrepare"];
+  onConfirm: MarketCardProps["onConfirm"];
   onCreate: (body: unknown) => void;
   onClose: () => void;
 }
@@ -47,7 +48,7 @@ export function AirportPanel(p: AirportPanelProps) {
         <CamLink icao={p.icao} />
         {related.length > 0 && <div className="section-title">{t.markets}</div>}
         {related.map((m) => (
-          <MarketCard key={m.id} market={m} busy={p.busy} onBet={p.onBet} />
+          <MarketCard key={m.id} market={m} busy={p.busy} onPrepare={p.onPrepare} onConfirm={p.onConfirm} />
         ))}
         <div className="section-title">
           <span>{t.departures}</span>

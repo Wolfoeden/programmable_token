@@ -1,5 +1,5 @@
 /** Thin client for the server API. */
-import type { AircraftDetail, AircraftDto, DeparturesResponse, Health, MarketDto, Portfolio } from "./types";
+import type { AircraftDetail, AircraftResponse, BetCosts, DeparturesResponse, Health, MarketDto, Portfolio, StreamInfo } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -31,14 +31,15 @@ export interface WalletPayload {
 
 export const api = {
   health: () => request<Health>("/api/health"),
-  aircraft: () => request<{ now: number; aircraft: AircraftDto[] }>("/api/aircraft"),
+  aircraft: () => request<AircraftResponse>("/api/aircraft"),
+  stream: (icao: string) => request<StreamInfo>(`/api/streams/${icao}`),
   aircraftDetail: (hex: string) => request<AircraftDetail>(`/api/aircraft/${hex}`),
   markets: () => request<{ now: number; markets: MarketDto[] }>("/api/markets"),
   market: (id: string) => request<{ market: MarketDto }>(`/api/markets/${id}`),
   createMarket: (body: unknown) => post<{ marketId: string; txHash?: string; existing: boolean }>("/api/markets", body),
   departures: (icao: string) => request<DeparturesResponse>(`/api/airports/${icao}/departures`),
   betTx: (w: WalletPayload, marketId: string, outcome: number, stake: bigint) =>
-    post<{ tx: string; quote: { payout: string; multiplier: number; probabilityAfter: number } }>("/api/tx/bet", {
+    post<{ tx: string; quote: { payout: string; multiplier: number; probabilityAfter: number }; costs: BetCosts }>("/api/tx/bet", {
       ...w,
       marketId,
       outcome,

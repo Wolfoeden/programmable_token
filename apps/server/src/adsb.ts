@@ -25,6 +25,10 @@ export interface AdsbSource {
   /** Lookup for the oracle's flight tracker (own budget, fallback source). */
   track(hexes: string[]): Promise<Aircraft[]>;
   byCallsign(callsign: string): Promise<Aircraft[]>;
+  /** Like `area`, but throws when no source answered (no cached fallback). */
+  areaStrict?(lat: number, lon: number, radiusNm: number): Promise<Aircraft[]>;
+  /** When the last upstream request succeeded or failed (unix ms, 0 = never). */
+  health?(): { lastOkAt: number; lastFailAt: number };
 }
 
 const RADII = [25, 50, 100, 150, 250];
@@ -35,6 +39,12 @@ export class AdsbClient implements AdsbSource {
   private mapThrottle = new Throttle(2);
   private trackThrottle = new Throttle(1);
   private backoffUntil = 0;
+  private lastOkAt = 0;
+  private lastFailAt = 0;
+
+  health() {
+    return { lastOkAt: this.lastOkAt, lastFailAt: this.lastFailAt };
+  }
 
   constructor(
     private baseUrl: string,
@@ -43,7 +53,14 @@ export class AdsbClient implements AdsbSource {
 
   private async get(base: string, path: string, throttle: Throttle): Promise<Aircraft[]> {
     await throttle.wait();
-    const res = await fetchJson<ReadsbResponse>(`${base}${path}`);
+    let res: ReadsbResponse;
+    try {
+      res = await fetchJson<ReadsbResponse>(`${base}${path}`);
+      this.lastOkAt = Date.now();
+    } catch (e) {
+      this.lastFailAt = Date.now();
+      throw e;
+    }
     const now = res.now === undefined ? Date.now() : res.now < 1e12 ? res.now * 1000 : res.now;
     return (res.ac ?? res.aircraft ?? []).map((a) => fromReadsb(a, now)).filter((a): a is Aircraft => a !== null);
   }
@@ -86,6 +103,18 @@ export class AdsbClient implements AdsbSource {
       });
     this.areaCache.set(key, p);
     return p;
+  }
+
+  async areaStrict(lat: number, lon: number, radiusNm: number): Promise<Aircraft[]> {
+    const r = RADII.find((x) => x >= radiusNm) ?? 250;
+    const primary = `/v2/point/${lat.toFixed(3)}/${lon.toFixed(3)}/${r}`;
+    try {
+      const list = await this.get(this.baseUrl, primary, this.mapThrottle);
+      if (list.length > 0 || !this.fallbackUrl) return list;
+    } catch (e) {
+      if (!this.fallbackUrl) throw e;
+    }
+    return this.get(this.fallbackUrl!, `/v2/lat/${lat.toFixed(3)}/lon/${lon.toFixed(3)}/dist/${r}`, this.mapThrottle);
   }
 
   private async hexes(hexes: string[], throttle: Throttle, allowFallback: boolean): Promise<Aircraft[]> {

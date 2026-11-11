@@ -78,6 +78,12 @@ export function demoWallet(name: string): AppWallet {
   };
 }
 
+/** Sign an already built transaction and submit it through the server. */
+export async function signBuilt(wallet: AppWallet, tx: string): Promise<string> {
+  const witness = await wallet.sign(tx);
+  return (await api.submit(tx, witness)).txHash;
+}
+
 /** Build on the server, sign in the wallet, submit through the server. */
 export async function signAndSubmit(wallet: AppWallet, build: (p: WalletPayload) => Promise<{ tx: string }>): Promise<string> {
   const payload = await wallet.payload();

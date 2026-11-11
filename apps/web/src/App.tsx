@@ -1,22 +1,34 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { WEBCAMS as webcams } from "@flightradar/core/webcams";
+import { WEBCAMS as webcams, webcamFor } from "@flightradar/core/webcams";
 import { api } from "./api";
 import { AboutDialog } from "./components/AboutDialog";
 import { AircraftPanel } from "./components/AircraftPanel";
 import { AirportPanel } from "./components/AirportPanel";
-import { MarketCard } from "./components/MarketCard";
+import { FlightSwitcher } from "./components/FlightSwitcher";
+import { INFO_PAGES, InfoDialog, type InfoPage } from "./components/InfoPages";
+import { MarketCard, type PreparedBet } from "./components/MarketCard";
 import { PortfolioPanel } from "./components/PortfolioPanel";
 import { Toasts, type Toast } from "./components/Toasts";
 import { WalletDialog } from "./components/WalletDialog";
 import { usePoll } from "./hooks";
 import { errorText, t } from "./i18n";
 import { MapView } from "./map/MapView";
-import type { AircraftDetail, AircraftDto, MarketDto } from "./types";
-import { connectBrowserWallet, demoWallet, signAndSubmit, type AppWallet, type WalletOption } from "./wallet";
+import type { AircraftDetail, AircraftDto, DataStatus, MarketDto } from "./types";
+import { connectBrowserWallet, demoWallet, signAndSubmit, signBuilt, type AppWallet, type WalletOption } from "./wallet";
 
 type Selection = { kind: "aircraft"; hex: string } | { kind: "airport"; icao: string } | { kind: "market"; id: string } | { kind: "portfolio" } | null;
 
 const WALLET_KEY = "frf.wallet";
+
+/** Flights the switcher offers: landing soon at a live-stream airport, by arrival. */
+function bettableFlights(list: AircraftDto[]): AircraftDto[] {
+  return list.filter((a) => a.airport && a.etaMs && webcamFor(a.airport)).sort((x, y) => x.etaMs! - y.etaMs!);
+}
+
+const pageFromHash = (): InfoPage | null => {
+  const h = window.location.hash.replace("#", "");
+  return INFO_PAGES.some((p) => p.id === h) ? (h as InfoPage) : null;
+};
 
 function remember(id: string | null) {
   try {
@@ -51,6 +63,12 @@ export function App() {
   const [search, setSearch] = useState("");
   const aircraftRef = useRef<AircraftDto[]>([]);
   const [liveSelected, setLiveSelected] = useState<AircraftDto | undefined>();
+  const [flights, setFlights] = useState<AircraftDto[]>([]);
+  const flightsRef = useRef<AircraftDto[]>([]);
+  const [data, setData] = useState<{ status: DataStatus; updatedAt: number | null }>({ status: "loading", updatedAt: null });
+  const [notice, setNotice] = useState<string | null>(null);
+  const [infoPage, setInfoPage] = useState<InfoPage | null>(pageFromHash);
+  const selectionRef = useRef<Selection>(null);
   const toastId = useRef(0);
 
   const toast = useCallback((kind: Toast["kind"], text: string, detail?: string) => {
@@ -60,6 +78,24 @@ export function App() {
   }, []);
 
   const selectedHex = selection?.kind === "aircraft" ? selection.hex : null;
+  selectionRef.current = selection;
+
+  useEffect(() => {
+    const onHash = () => setInfoPage(pageFromHash());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+  const closeInfo = () => {
+    history.replaceState(null, "", window.location.pathname + window.location.search);
+    setInfoPage(null);
+  };
+
+  /** Select a flight from the list: same flight for list, map, panel, stream and prediction. */
+  const selectFlight = useCallback((a: AircraftDto, fly = true) => {
+    setSelection({ kind: "aircraft", hex: a.hex });
+    setLiveSelected(a);
+    if (fly) setFlyTo({ lat: a.lat, lon: a.lon, zoom: 7, key: Date.now() });
+  }, []);
 
   // Route and markets of the selected aircraft.
   useEffect(() => {
@@ -99,9 +135,33 @@ export function App() {
   const onAircraftUpdate = useCallback(
     (list: AircraftDto[]) => {
       aircraftRef.current = list;
-      if (selectedHex) setLiveSelected(list.find((a) => a.hex === selectedHex));
+      const prev = flightsRef.current;
+      const next = bettableFlights(list);
+      flightsRef.current = next;
+      setFlights(next);
+      const sel = selectionRef.current;
+      if (sel?.kind !== "aircraft") return;
+      const live = list.find((a) => a.hex === sel.hex);
+      const wasListed = prev.findIndex((f) => f.hex === sel.hex);
+      // Keep the selection while the flight is listed; if it drops out, move on
+      // to the flight that followed it (or the first one) and say so.
+      if (wasListed >= 0 && !next.some((f) => f.hex === sel.hex)) {
+        const gone = prev[wasListed]!;
+        const name = gone.flightNumber || gone.callsign || gone.hex;
+        const successor = prev.slice(wasListed + 1).find((f) => next.some((n) => n.hex === f.hex)) ?? next[0];
+        const replacement = successor ? next.find((n) => n.hex === successor.hex)! : undefined;
+        if (replacement) {
+          setNotice(`${name} is no longer in the list (landed, or out of data range). Now showing ${replacement.flightNumber || replacement.callsign}.`);
+          selectFlight(replacement);
+        } else {
+          setNotice(`${name} is no longer in the list (landed, or out of data range). No other flight is landing soon.`);
+          setLiveSelected(live);
+        }
+        return;
+      }
+      setLiveSelected(live);
     },
-    [selectedHex],
+    [selectFlight],
   );
 
   const onAircraftClick = useCallback(
@@ -110,6 +170,7 @@ export function App() {
         setRaceHexes((xs) => (xs.includes(hex) ? xs.filter((x) => x !== hex) : xs.length >= 4 ? xs : [...xs, hex]));
         return;
       }
+      setNotice(null);
       setSelection({ kind: "aircraft", hex });
       setLiveSelected(aircraftRef.current.find((a) => a.hex === hex));
     },
@@ -148,11 +209,39 @@ export function App() {
     }
   };
 
-  const onBet = (m: MarketDto, outcome: number, stake: bigint) =>
-    withWallet(async (w) => {
-      const hash = await signAndSubmit(w, (p) => api.betTx(p, m.id, outcome, stake));
+  /** Build the bet so the user sees the real costs before signing. */
+  const onPrepare = async (m: MarketDto, outcome: number, stake: bigint): Promise<PreparedBet | null> => {
+    if (!wallet) {
+      setWalletDialog(true);
+      return null;
+    }
+    setBusy(true);
+    try {
+      const res = await api.betTx(await wallet.payload(), m.id, outcome, stake);
+      return { market: m, outcome, tx: res.tx, costs: res.costs, payout: res.quote.payout, multiplier: res.quote.multiplier };
+    } catch (e) {
+      toast("error", errorText(e));
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onConfirm = async (bet: PreparedBet): Promise<boolean> => {
+    if (!wallet) return false;
+    setBusy(true);
+    try {
+      const hash = await signBuilt(wallet, bet.tx);
       toast("ok", t.betPlaced, hash);
-    });
+      return true;
+    } catch (e) {
+      toast("error", errorText(e));
+      return false;
+    } finally {
+      setBusy(false);
+      markets.reload();
+    }
+  };
 
   const onClaim = (marketId: string) =>
     withWallet(async (w) => {
@@ -222,6 +311,7 @@ export function App() {
         }}
         onBackgroundClick={() => raceHexes.length === 0 && setSelection(null)}
         onAircraftUpdate={onAircraftUpdate}
+        onStatus={(s) => setData((d) => (d.status === s.status && d.updatedAt === s.updatedAt ? d : { status: s.status, updatedAt: s.updatedAt }))}
         flyTo={flyTo}
       />
 
@@ -303,6 +393,8 @@ export function App() {
         </div>
       )}
 
+      <FlightSwitcher flights={flights} selectedHex={selectedHex} status={data.status} notice={notice} onSelect={(a) => (setNotice(null), selectFlight(a))} />
+
       {selection?.kind === "aircraft" && (
         <AircraftPanel
           hex={selection.hex}
@@ -311,14 +403,16 @@ export function App() {
           markets={aircraftMarkets}
           scheduleAvailable={!!health?.schedule}
           busy={busy}
-          onBet={onBet}
+          dataUpdatedAt={data.updatedAt}
+          onPrepare={onPrepare}
+          onConfirm={onConfirm}
           onCreate={onCreate}
           onStartRace={() => setRaceHexes([selection.hex])}
           onClose={() => setSelection(null)}
         />
       )}
       {selection?.kind === "airport" && (
-        <AirportPanel icao={selection.icao} markets={marketList} busy={busy} onBet={onBet} onCreate={onCreate} onClose={() => setSelection(null)} />
+        <AirportPanel icao={selection.icao} markets={marketList} busy={busy} onPrepare={onPrepare} onConfirm={onConfirm} onCreate={onCreate} onClose={() => setSelection(null)} />
       )}
       {selection?.kind === "market" && selectedMarket && (
         <aside className="panel">
@@ -332,7 +426,7 @@ export function App() {
             </button>
           </div>
           <div className="panel-body">
-            <MarketCard market={selectedMarket} highlight busy={busy} onBet={onBet} />
+            <MarketCard market={selectedMarket} highlight busy={busy} onPrepare={onPrepare} onConfirm={onConfirm} />
           </div>
         </aside>
       )}
@@ -369,10 +463,20 @@ export function App() {
           Open market
         </span>
       </div>
-      <div className="attribution">{t.attribution}</div>
+      <footer className="attribution">
+        <nav className="legal-links" aria-label="Site information">
+          {INFO_PAGES.map((p) => (
+            <a key={p.id} href={`#${p.id}`}>
+              {p.label}
+            </a>
+          ))}
+        </nav>
+        <span>{t.attribution}</span>
+      </footer>
       <Toasts items={toasts} onDismiss={(id) => setToasts((xs) => xs.filter((x) => x.id !== id))} />
       {walletDialog && <WalletDialog demo={!!health?.demo} onPick={pickWallet} onClose={() => setWalletDialog(false)} />}
       {about && <AboutDialog onClose={() => setAbout(false)} />}
+      {infoPage && <InfoDialog page={infoPage} onClose={closeInfo} />}
     </div>
   );
 }

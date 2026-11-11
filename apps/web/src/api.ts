@@ -68,6 +68,7 @@ export const api = {
       stake: stake.toString(),
     }),
   claimTx: (w: WalletPayload, marketId: string) => post<{ tx: string; value: string }>("/api/tx/claim", { ...w, marketId }),
+  burnTx: (w: WalletPayload) => post<{ tx: string; burned: number }>("/api/tx/burn", w),
   cancelTx: (w: WalletPayload, order: string) => post<{ tx: string }>("/api/tx/cancel", { ...w, order }),
   submit: (tx: string, witness: string) => post<{ txHash: string }>("/api/tx/submit", { tx, witness }),
   portfolio: (w: WalletPayload) => post<Portfolio>("/api/portfolio", w),

@@ -21,6 +21,7 @@ import {
   buildCancelOrder,
   DEFAULT_BATCHER_FEE,
   ORDER_DEPOSIT,
+  buildBurnWorthless,
   buildClaim,
   buildClaimOrder,
   claimValue,
@@ -402,6 +403,16 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
     const tokens: Assets = {};
     for (const [outcome, q] of positions) tokens[unit(s.ctx.contracts.marketHash, positionName(m.datum.marketId, outcome))] = q;
     return toJson({ tx: (await buildClaimOrder(lucid, s.ctx.contracts, m, tokens)).toCBOR(), value: claimValue(m.datum, positions) });
+  });
+
+  /** Burn the wallet's worthless tickets (losing side of resolved markets); frees their ADA. */
+  app.post("/api/tx/burn", async (req) => {
+    const body = WalletBody.parse(req.body);
+    const lucid = await walletLucid(body);
+    const holdings: Assets = {};
+    for (const u of await lucid.wallet().getUtxos()) for (const [k, v] of Object.entries(u.assets)) holdings[k] = (holdings[k] ?? 0n) + v;
+    const { tx, burned } = await buildBurnWorthless(lucid, s.ctx.contracts, s.index.live, holdings);
+    return { tx: tx.toCBOR(), burned };
   });
 
   app.post("/api/tx/cancel", async (req) => {

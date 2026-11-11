@@ -43,7 +43,7 @@ const completeWith = (opts: BuildOptions) => (opts.walletUtxos ? { presetWalletI
 
 export class MarketError extends Error {
   constructor(
-    readonly code: "market_closed" | "market_not_open" | "market_not_resolved" | "bad_outcome" | "bad_stake" | "cap_reached" | "no_seed_utxo" | "nothing_to_claim",
+    readonly code: "market_closed" | "market_not_open" | "market_not_resolved" | "bad_outcome" | "bad_stake" | "cap_reached" | "no_seed_utxo" | "nothing_to_claim" | "nothing_to_burn",
     message?: string,
   ) {
     super(message ?? code);
@@ -398,6 +398,27 @@ export async function buildClaim(
     .mintAssets(burn, MintRedeemer.mintOrBurn())
     .pay.ToContract(...continuing(c, m, m.datum, lovelaceOf(m.utxo) - due))
     .complete(completeWith(opts));
+}
+
+/**
+ * Burn position tokens that pay nothing (the losing side of a resolved
+ * market). The minting policy allows any burn, so the market is not
+ * touched; the wallet gets back the ADA the tokens were holding.
+ */
+export async function buildBurnWorthless(lucid: LucidEvolution, c: Contracts, markets: MarketView[], holdings: Assets, opts: BuildOptions = {}): Promise<{ tx: TxSignBuilder; burned: number }> {
+  const burn: Assets = {};
+  for (const m of markets) {
+    if (m.datum.state.kind !== "resolved" || m.datum.state.winner === null) continue;
+    const winner = m.datum.state.winner;
+    for (const [outcome, q] of positionsIn(c, holdings, m.datum.marketId)) {
+      if (outcome === winner || q <= 0n) continue;
+      burn[unit(c.marketHash, positionName(m.datum.marketId, outcome))] = -q;
+    }
+  }
+  const burned = Object.keys(burn).length;
+  if (burned === 0) throw new MarketError("nothing_to_burn");
+  const tx = await lucid.newTx().mintAssets(burn, MintRedeemer.mintOrBurn()).attach.MintingPolicy(c.market).complete(completeWith(opts));
+  return { tx, burned };
 }
 
 /** Operator closes a market after the claim deadline and burns its NFTs. */

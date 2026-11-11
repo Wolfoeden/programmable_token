@@ -1220,6 +1220,21 @@ details.rules summary {
   border-color: rgba(61, 220, 151, 0.5);
 }
 
+.lost-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.lost-box .btn {
+  align-self: flex-start;
+}
+
 .closed-box {
   display: flex;
   flex-direction: column;

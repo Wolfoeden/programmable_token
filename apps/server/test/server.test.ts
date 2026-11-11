@@ -204,7 +204,23 @@ describe("server pipeline (emulator, fake flight data)", () => {
     expect((await opPositions()).get(0) ?? 0n).toBeGreaterThan(0n);
     await oracle.reclaimSeeds(index.live, (id) => index.isStale(id));
     await block();
-    expect((await opPositions()).get(0) ?? 0n).toBe(0n);
+    // Winning seed claimed and the losing seed burnt: no tickets left.
+    expect((await opPositions()).size).toBe(0);
+
+    // Bob lost (bet No): his worthless tickets can be burnt, freeing their ADA.
+    const bobTickets = async () => {
+      const w = await call<{ address: string; utxos: string[] }>("GET", "/api/demo/wallets/bob/utxos");
+      const res = await call<{ positions: Array<{ marketId: string }> }>("POST", "/api/portfolio", w);
+      return res.positions.filter((x) => x.marketId === marketId).length;
+    };
+    expect(await bobTickets()).toBe(1);
+    const wb = await call<{ address: string; utxos: string[] }>("GET", "/api/demo/wallets/bob/utxos");
+    const burn = await call<{ tx: string; burned: number }>("POST", "/api/tx/burn", wb);
+    expect(burn.burned).toBe(1);
+    const sig = await call<{ witness: string }>("POST", "/api/demo/wallets/bob/sign", { tx: burn.tx });
+    await call("POST", "/api/tx/submit", { tx: burn.tx, witness: sig.witness });
+    await block();
+    expect(await bobTickets()).toBe(0);
   });
 
   it("takes a bet as an order while the market is still being confirmed", async () => {

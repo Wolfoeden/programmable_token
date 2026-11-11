@@ -135,17 +135,12 @@ export function AircraftPanel(p: AircraftPanelProps) {
             </button>
           ) : sorted.length === 0 ? (
             <div className="closed-box">
-              <div>
-                {a?.airport
-                  ? `Betting is closed for this flight: predictions close ${CLOSE_LEAD_MIN} minutes before the estimated landing.`
-                  : "No prediction for this flight."}
-              </div>
+              <div>{a?.airport ? "Betting is closed" : "No prediction for this flight."}</div>
               {p.nextOpen && p.onSelectFlight && (
                 <button type="button" className="btn primary" onClick={() => p.onSelectFlight!(p.nextOpen!)}>
                   Bet on {p.nextOpen.flightNumber || p.nextOpen.callsign} → {p.nextOpen.airport}
                 </button>
               )}
-              {!p.nextOpen && <div className="muted">No other flight is open for betting right now.</div>}
             </div>
           ) : null)}
 

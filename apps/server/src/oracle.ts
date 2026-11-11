@@ -5,7 +5,7 @@
  * evidence is stored for audit.
  */
 import { airportByIcao, flightKey, flightsOf, flyingElsewhere, judge, type FlightStatus, type Observation, type Verdict } from "@flightradar/core";
-import { buildClaim, buildClose, buildResolve, claimValue, fetchReferenceNfts, positionsIn, type MarketView } from "@flightradar/chain";
+import { buildBurnWorthless, buildClaim, buildClose, buildResolve, claimValue, fetchReferenceNfts, positionsIn, type MarketView } from "@flightradar/chain";
 import type { ChainContext } from "./chain.js";
 import type { ScheduleProvider } from "./schedule.js";
 import type { Store } from "./store.js";
@@ -45,8 +45,8 @@ export class Oracle {
   /**
    * Claim the operator's own seed positions once a market is decided, so
    * the seed (and on a void the whole seed) returns to the operator wallet
-   * right away instead of at Close, months later. Only the positions that
-   * pay out are burnt.
+   * right away instead of at Close, months later. Losing positions are
+   * burnt as well, so no worthless tickets stay in the wallet.
    */
   async reclaimSeeds(markets: MarketView[], isStale: (id: string) => boolean = () => false): Promise<void> {
     for (const [id, until] of this.reclaiming) if (until < Date.now()) this.reclaiming.delete(id);
@@ -57,14 +57,18 @@ export class Oracle {
     for (const u of held) for (const [k, v] of Object.entries(u.assets)) if (k !== "lovelace") assets[k] = (assets[k] ?? 0n) + v;
     for (const m of decided) {
       const all = positionsIn(this.ctx.contracts, assets, m.datum.marketId);
-      const state = m.datum.state;
-      const winner = state.kind === "resolved" ? state.winner : null;
-      const paying = winner === null ? all : new Map([...all].filter(([o]) => o === winner));
-      if (paying.size === 0 || claimValue(m.datum, paying) === 0n) continue;
+      if (all.size === 0) continue;
+      // The claim burns every position of the market, losers included; with
+      // nothing to pay, the worthless tokens are just burnt.
+      const pays = claimValue(m.datum, all) > 0n;
       this.reclaiming.set(m.datum.marketId, Date.now() + 3 * 60_000);
       try {
-        const txHash = await this.ctx.operator.run((walletUtxos) => buildClaim(this.ctx.operator.lucid, this.ctx.contracts, m, paying, { walletUtxos }));
-        log.info("operator seed reclaimed", { marketId: m.datum.marketId, lovelace: claimValue(m.datum, paying), txHash });
+        const txHash = await this.ctx.operator.run(async (walletUtxos) =>
+          pays
+            ? buildClaim(this.ctx.operator.lucid, this.ctx.contracts, m, all, { walletUtxos })
+            : (await buildBurnWorthless(this.ctx.operator.lucid, this.ctx.contracts, [m], assets, { walletUtxos })).tx,
+        );
+        log.info(pays ? "operator seed reclaimed" : "operator lost tickets burnt", { marketId: m.datum.marketId, lovelace: claimValue(m.datum, all), txHash });
       } catch (e) {
         this.reclaiming.delete(m.datum.marketId);
         log.warn("seed reclaim failed", { marketId: m.datum.marketId, error: String(e) });

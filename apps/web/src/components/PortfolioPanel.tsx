@@ -10,6 +10,8 @@ export interface PortfolioPanelProps {
   busy: boolean;
   onClaim: (marketId: string) => void;
   onCancel: (orderRef: string) => void;
+  /** Burn worthless tickets (lost bets). */
+  onBurnLost: () => void;
   onOpenMarket: (m: MarketDto) => void;
   onClose: () => void;
   /** All markets, to name the market of an open order. */
@@ -35,6 +37,19 @@ export function PortfolioPanel(p: PortfolioPanelProps) {
       <div className="panel-body">
         {error !== null && <div className="muted">{errorText(error)}</div>}
         {data && data.positions.length === 0 && data.orders.length === 0 && <div className="muted">{t.noPositions}</div>}
+        {(() => {
+          const lost = (data?.positions ?? []).filter((pos) => pos.market?.phase === "resolved" && BigInt(pos.claimable) === 0n).length;
+          return lost > 0 ? (
+            <div className="lost-box">
+              <div>
+                {lost === 1 ? "1 lost bet" : `${lost} lost bets`} still in your wallet as tickets. They pay nothing; removing them returns the ₳ they hold.
+              </div>
+              <button type="button" className="btn small primary" disabled={p.busy} onClick={p.onBurnLost}>
+                Remove lost tickets
+              </button>
+            </div>
+          ) : null;
+        })()}
         {data?.positions.map((pos) => {
           const m = pos.market;
           const claimable = BigInt(pos.claimable);

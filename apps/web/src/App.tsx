@@ -308,6 +308,12 @@ export function App() {
       toast("ok", t.submitted, hash);
     });
 
+  const onBurnLost = () =>
+    withWallet(async (w) => {
+      const hash = await signAndSubmit(w, (p) => api.burnTx(p));
+      toast("ok", "Lost tickets removed.", hash);
+    });
+
   const onCancel = (ref: string) =>
     withWallet(async (w) => {
       const hash = await signAndSubmit(w, (p) => api.cancelTx(p, ref));
@@ -461,6 +467,7 @@ export function App() {
           busy={busy}
           onClaim={onClaim}
           onCancel={onCancel}
+          onBurnLost={onBurnLost}
           onOpenMarket={(m) => {
             const hex = m.icao24[0];
             if (hex) setSelection({ kind: "aircraft", hex });

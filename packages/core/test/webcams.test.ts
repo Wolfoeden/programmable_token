@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { airportByIcao, bearingDeg, classifyMovement, isShortHaul, onRoute, destinationPoint, landingWithinHour, WEBCAMS, webcamAirports, webcamFor, type Aircraft } from "../src/index.js";
+import { airportByIcao, bearingDeg, classifyMovement, isWithinRange, onRoute, destinationPoint, landingWithinHour, WEBCAMS, webcamAirports, webcamFor, type Aircraft } from "../src/index.js";
 
 const LHR = airportByIcao("EGLL")!;
 const at = (km: number, bearing: number, o: Partial<Aircraft>): Aircraft => {
@@ -29,12 +29,14 @@ describe("live-stream airports", () => {
   });
 
   it("counts only departure airports within about an hour", () => {
-    expect(isShortHaul("LFPG", "EGLL")).toBe(true); // Paris, ~350 km
-    expect(isShortHaul("GCLP", "GCRR")).toBe(true); // Gran Canaria
-    expect(isShortHaul("KLAX", "KLAS")).toBe(true);
-    expect(isShortHaul("WSSS", "EGLL")).toBe(false); // Singapore
-    expect(isShortHaul("LPPT", "LPMA")).toBe(false); // Lisbon, ~970 km
-    expect(isShortHaul("EGLL", "EGLL")).toBe(false);
+    expect(isWithinRange("LFPG", "EGLL")).toBe(true); // Paris, ~350 km
+    expect(isWithinRange("GCLP", "GCRR")).toBe(true); // Gran Canaria
+    expect(isWithinRange("KLAX", "KLAS")).toBe(true);
+    expect(isWithinRange("WSSS", "EGLL")).toBe(false); // Singapore
+    expect(isWithinRange("LPPT", "LPMA")).toBe(true); // Lisbon, ~970 km
+    expect(isWithinRange("LEMD", "EGLL")).toBe(true); // Madrid, ~1,250 km, about 2 h
+    expect(isWithinRange("LGAV", "EGLL")).toBe(false); // Athens, ~2,400 km, over 3 h
+    expect(isWithinRange("EGLL", "EGLL")).toBe(false);
   });
 
   it("rejects stale routes where the aircraft is nowhere near the line", () => {

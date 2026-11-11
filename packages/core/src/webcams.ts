@@ -43,11 +43,11 @@ export const MOVEMENT_RADIUS_NM = 250;
 export type Movement = "landing";
 
 /**
- * Short-haul limit: the departure airport must be within about one hour of
- * flying from the live-stream airport (great circle, cruise ~750 km/h minus
- * climb and descent).
+ * Route limit: flights of up to about three hours. The departure airport
+ * must be within 2,200 km of the live-stream airport (great circle; about
+ * 2 h 45 min at ~800 km/h cruise plus climb and descent).
  */
-export const SHORT_HAUL_KM = 700;
+export const MAX_ROUTE_KM = 2200;
 
 /**
  * Route data can be wrong for today: airlines reuse a flight number for
@@ -100,10 +100,11 @@ export function onRoute(ac: { lat: number; lon: number; trackDeg?: number }, ori
   return true;
 }
 
-export function isShortHaul(origin: string | undefined, destination: string | undefined): boolean {
+/** Is the route at most about three hours of flying? */
+export function isWithinRange(origin: string | undefined, destination: string | undefined): boolean {
   const o = airportByIcao(origin);
   const d = airportByIcao(destination);
-  return !!o && !!d && o.icao !== d.icao && distanceKm(o, d) <= SHORT_HAUL_KM;
+  return !!o && !!d && o.icao !== d.icao && distanceKm(o, d) <= MAX_ROUTE_KM;
 }
 
 /**

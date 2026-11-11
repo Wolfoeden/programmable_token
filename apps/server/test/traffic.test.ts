@@ -29,7 +29,7 @@ function inbound(km: number, now: number, extra: Partial<Aircraft> = {}): Aircra
 
 /** One full round over all live-stream airports. */
 async function round(t: CamTraffic) {
-  for (let i = 0; i < webcamAirports().length; i++) await t.step();
+  for (let i = 0; i < t.slotsPerRound; i++) await t.step();
 }
 
 describe("CamTraffic arrivals", () => {

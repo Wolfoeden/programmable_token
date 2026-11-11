@@ -4,7 +4,7 @@
  * slow round-robin, shared by all clients, and paused while nobody is
  * watching. This keeps upstream calls, CPU and payload small and constant.
  */
-import { distanceKm, isShortHaul, landingWithinHour, onRoute, MOVEMENT_RADIUS_NM, webcamAirports, type Aircraft, type Airport, type Movement } from "@flightradar/core";
+import { destinationPoint, distanceKm, isWithinRange, landingWithinHour, onRoute, MOVEMENT_RADIUS_NM, webcamAirports, type Aircraft, type Airport, type Movement } from "@flightradar/core";
 import type { AdsbSource } from "./adsb.js";
 import type { RouteSource } from "./routes.js";
 import type { ShadowFlight, ShadowSample } from "./shadow.js";
@@ -69,8 +69,33 @@ export type TrafficStatus = "loading" | "ok" | "unavailable";
 const IDLE_AFTER_MS = 2 * 60_000;
 const STALE_AFTER_MS = 3 * 60_000;
 
+/**
+ * One upstream area query reaches 250 nm (463 km), but a jet is 700-800 km
+ * out an hour before landing. Besides the airport itself, each airport is
+ * also queried around four points 380 km to the north, east, south and
+ * west, which together see inbound traffic up to about 840 km out.
+ */
+const RING_KM = 380;
+const RING_BEARINGS = [0, 90, 180, 270];
+
+interface Slot {
+  airport: Airport;
+  /** 0 = the airport itself, 1..4 = ring points. */
+  k: number;
+  lat: number;
+  lon: number;
+}
+
 export class CamTraffic {
   private airports: Airport[] = webcamAirports();
+  private slots: Slot[] = this.airports.flatMap((a) => [
+    { airport: a, k: 0, lat: a.lat, lon: a.lon },
+    ...RING_BEARINGS.map((b, i) => ({ airport: a, k: i + 1, ...destinationPoint(a, b, RING_KM) })),
+  ]);
+  /** Steps until every query point (airports and ring points) has been asked once. */
+  get slotsPerRound(): number {
+    return 2 * Math.max(this.airports.length, this.slots.length - this.airports.length);
+  }
   private perAirport = new Map<string, { at: number; list: Shown[] }>();
   private next = 0;
   private lastClientAt = 0;
@@ -105,7 +130,8 @@ export class CamTraffic {
     const h = this.adsb.health?.();
     const now = Date.now();
     if (h && h.lastFailAt > h.lastOkAt && now - h.lastOkAt > 60_000 && h.lastFailAt > 0) return "unavailable";
-    if (this.refreshed.size < this.airports.length) return "loading";
+    // Loading until every airport itself has been queried (the ring points follow).
+    if (this.airports.some((a) => !this.refreshed.has(`${a.icao}#0`))) return "loading";
     return "ok";
   }
 
@@ -113,18 +139,24 @@ export class CamTraffic {
     return this.alwaysOn || Date.now() - this.lastClientAt < IDLE_AFTER_MS;
   }
 
-  /** Refresh one airport. Call every 1.5 s or so. */
+  /** Refresh one query point. Call every 1.5 s or so. */
   async step(): Promise<void> {
-    if (!this.active || this.airports.length === 0) return;
-    const airport = this.airports[this.next % this.airports.length]!;
+    if (!this.active || this.slots.length === 0) return;
+    // Alternate: an airport itself (touchdowns are seen there, every ~15 s
+    // for five airports), then the next ring point (each about once a minute).
+    const centers = this.slots.filter((x) => x.k === 0);
+    const rings = this.slots.filter((x) => x.k > 0);
+    const n = this.next;
+    const slot = n % 2 === 0 || rings.length === 0 ? centers[(n >> 1) % centers.length]! : rings[(n >> 1) % rings.length]!;
+    const airport = slot.airport;
     this.next += 1;
     // Judge only this request: a failure keeps the previous list (it ages out).
     let list: Aircraft[] = [];
     let failed = false;
     try {
       list = this.adsb.areaStrict
-        ? await this.adsb.areaStrict(airport.lat, airport.lon, MOVEMENT_RADIUS_NM)
-        : await this.adsb.area(airport.lat, airport.lon, MOVEMENT_RADIUS_NM);
+        ? await this.adsb.areaStrict(slot.lat, slot.lon, MOVEMENT_RADIUS_NM)
+        : await this.adsb.area(slot.lat, slot.lon, MOVEMENT_RADIUS_NM);
     } catch {
       failed = true;
     }
@@ -137,12 +169,12 @@ export class CamTraffic {
       const phase: Movement = "landing";
       // Geometry alone also catches traffic for neighbouring airports
       // (London has six). Keep only flights whose route ends here.
-      // Only short hops: the departure airport is about an hour away at most.
+      // Only flights of up to about three hours (departure within 2,200 km).
       let origin: string | undefined;
       let flightNumber: string | undefined;
       if (this.routes) {
         const route = await this.routes.lookup(ac.callsign);
-        if (route?.destination !== airport.icao || !isShortHaul(route.origin, airport.icao) || !onRoute(ac, route.origin, airport.icao)) continue;
+        if (route?.destination !== airport.icao || !isWithinRange(route.origin, airport.icao) || !onRoute(ac, route.origin, airport.icao)) continue;
         origin = route.origin;
         if (route.flightNumber) flightNumber = route.flightNumber;
       }
@@ -159,11 +191,13 @@ export class CamTraffic {
     // An empty answer is usually an upstream hiccup: keep the last list.
     // A failed request keeps the previous list; it ages out after 3 minutes.
     if (!failed) {
-      this.perAirport.set(airport.icao, { at: Date.now(), list: shown });
+      this.perAirport.set(`${airport.icao}#${slot.k}`, { at: Date.now(), list: shown });
       this.updatedAt = Date.now();
-      this.follow(airport, shown, list);
+      // Arrivals and touchdowns are judged from the query at the airport,
+      // against everything currently listed for it (all query points).
+      if (slot.k === 0) this.follow(airport, this.list().filter((x) => x.airport === airport.icao), list);
     }
-    this.refreshed.add(airport.icao);
+    this.refreshed.add(`${airport.icao}#${slot.k}`);
   }
 
   /** Update arrivals at this airport from one fresh answer. */

@@ -519,11 +519,6 @@ export function App() {
           <span className="label-wide">Departure airport</span>
           <span className="label-narrow">Departure</span>
         </span>
-        <span>
-          <span className="ring" />
-          <span className="label-wide">Open market</span>
-          <span className="label-narrow">Market</span>
-        </span>
       </div>
       <Toasts items={toasts} onDismiss={(id) => setToasts((xs) => xs.filter((x) => x.id !== id))} />
       {walletDialog && <WalletDialog demo={!!health?.demo} network={health?.network ?? null} onPick={pickWallet} onClose={() => setWalletDialog(false)} />}

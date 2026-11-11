@@ -1418,77 +1418,7 @@ details.rules summary {
   height: 18px;
 }
 
-/* ## Now landing (watch mode) */
-
-.accent-btn {
-  border-color: rgba(255, 197, 61, 0.45);
-  color: var(--accent);
-}
-
-.watch {
-  position: fixed;
-  inset: 12px;
-  z-index: 40;
-  display: flex;
-  flex-direction: column;
-  background: rgba(11, 13, 16, 0.97);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-}
-
-.watch-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border);
-  color: var(--text-2);
-  font-size: 13px;
-}
-
-.watch-body {
-  flex: 1;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
-  gap: 14px;
-  padding: 14px;
-}
-
-.watch-stream .stream-frame {
-  max-height: calc(100vh - 140px);
-}
-
-.watch-side {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  overflow-y: auto;
-  min-height: 0;
-}
-
-.watch-title h2 {
-  margin: 0;
-  font-size: 22px;
-}
-
-.watch-title .sub {
-  color: var(--text-2);
-  font-size: 13px;
-}
-
-.watch-empty {
-  margin: auto;
-  max-width: 460px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  align-items: center;
-  text-align: center;
-  color: var(--text-2);
-  padding: 24px;
-}
+/* ## Arrival status in the flight panel */
 
 .watch-state {
   padding: 10px 12px;
@@ -1510,154 +1440,104 @@ details.rules summary {
   color: var(--warn);
 }
 
-.watch-next {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px 12px;
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-sm);
+/* ## Upcoming flights */
+
+.upcoming {
+  position: relative;
 }
 
-.watch-next .k,
-.race-result .k {
-  color: var(--text-3);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+.upcoming .btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
-/* ## Approach map */
-
-.radar {
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-
-.radar svg {
-  width: 100%;
-  max-width: 260px;
-  height: auto;
-}
-
-.radar figcaption {
-  color: var(--text-3);
-  font-size: 11px;
-  text-align: center;
-}
-
-.radar-ring {
-  fill: none;
-  stroke: rgba(255, 255, 255, 0.14);
-}
-
-.radar-axis {
-  stroke: rgba(255, 255, 255, 0.06);
-}
-
-.radar-airport {
-  fill: var(--bg);
-  stroke: var(--accent);
-  stroke-width: 2;
-}
-
-.radar-label {
-  fill: var(--text-3);
-  font-size: 10px;
-  font-family: var(--font);
-}
-
-.radar-label.strong {
-  fill: var(--accent);
-  font-weight: 600;
-}
-
-/* ## Race */
-
-.race-rows,
-.race-pick {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.race-row {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--c);
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
-}
-
-.race-row .race-dot {
-  background: var(--c);
-  margin-top: 5px;
-}
-
-.race-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.race-main .badge {
+.upcoming .count {
   margin-left: 6px;
-}
-
-.race-dot {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  border: 1px solid var(--border-strong);
-  flex: none;
-}
-
-.race-bar {
-  height: 5px;
-  border-radius: 3px;
+  padding: 0 6px;
+  border-radius: 999px;
   background: var(--surface-3);
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+.upcoming-list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  width: 380px;
+  max-height: min(70vh, 560px);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  z-index: 30;
   overflow: hidden;
 }
 
-.race-bar > div {
-  height: 100%;
-  background: var(--c);
-  transition: width 1s linear;
+.upcoming-head {
+  padding: 10px 14px 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-3);
 }
 
-.race-pick label {
-  display: flex;
+.upcoming-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0 6px;
+  overflow-y: auto;
+}
+
+.upcoming-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 10px;
   align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  font-size: 14px;
-}
-
-.race-suggest {
+  padding: 9px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font: inherit;
   text-align: left;
-  white-space: normal;
-  border: 1px dashed rgba(255, 197, 61, 0.45);
+  cursor: pointer;
 }
 
-.race-result {
+.upcoming-row:hover,
+.upcoming-row.selected {
+  background: var(--surface-3);
+}
+
+.up-flight,
+.up-eta {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  min-width: 0;
   font-size: 14px;
+}
+
+.up-eta {
+  align-items: flex-end;
+}
+
+.up-flight .muted,
+.up-eta .muted {
+  font-size: 12px;
+}
+
+.upcoming-empty,
+.upcoming-foot {
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.upcoming-foot {
+  border-top: 1px solid var(--border);
 }
 
 @media (max-width: 720px) {
@@ -1731,9 +1611,6 @@ details.rules summary {
     font-size: 10px;
     padding: 4px 6px;
   }
-  .watch-btn {
-    display: none !important;
-  }
   .banner {
     top: 82px !important;
   }
@@ -1779,25 +1656,20 @@ details.rules summary {
     text-align: left;
   }
   .btn .label-wide,
+  .legend .label-wide,
   .banner .label-wide {
     display: none;
   }
   .banner .label-narrow,
+  .legend .label-narrow,
   .btn .label-narrow {
     display: inline;
   }
-  .watch {
-    inset: 0;
-    border-radius: 0;
-  }
-  .watch-body {
-    grid-template-columns: 1fr;
-    overflow-y: auto;
-  }
-  .watch-side {
-    overflow: visible;
-  }
-  .radar svg {
-    max-width: 220px;
+  .upcoming-list {
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    top: 68px;
+    width: auto;
   }
 }

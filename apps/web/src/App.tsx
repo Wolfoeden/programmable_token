@@ -10,7 +10,7 @@ import { INFO_PAGES, InfoDialog, type InfoPage } from "./components/InfoPages";
 import { MarketCard, type PreparedBet } from "./components/MarketCard";
 import { PortfolioPanel } from "./components/PortfolioPanel";
 import { SiteMenu } from "./components/SiteMenu";
-import { nextApproach, WatchView } from "./components/WatchView";
+import { UpcomingList } from "./components/UpcomingList";
 import { flightName, flightState, stateText } from "./arrivals";
 import { useNow } from "./hooks";
 import { Toasts, type Toast } from "./components/Toasts";
@@ -61,7 +61,6 @@ export function App() {
   const marketList = markets.data?.markets ?? [];
   const [selection, setSelection] = useState<Selection>(null);
   const [detail, setDetail] = useState<AircraftDetail | null>(null);
-  const [watch, setWatch] = useState<{ hex: string | null } | null>(null);
   const [arrivals, setArrivals] = useState<Arrival[]>([]);
   const now = useNow(5000);
   const [wallet, setWallet] = useState<AppWallet | null>(null);
@@ -141,16 +140,15 @@ export function App() {
     if (health?.demo && id?.startsWith("demo:") && !wallet) setWallet(demoWallet(id.slice(5)));
   }, [health?.demo]);
 
-  // Escape closes watch mode or the panel.
+  // Escape closes the panel.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || walletDialog || about || infoPage) return;
-      if (watch) setWatch(null);
-      else setSelection(null);
+      setSelection(null);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [watch, walletDialog, about, infoPage]);
+  }, [walletDialog, about, infoPage]);
 
   const onAircraftUpdate = useCallback((list: AircraftDto[], arr: Arrival[]) => {
     aircraftRef.current = list;
@@ -283,11 +281,6 @@ export function App() {
   const selState = selectedHex ? flightState(selectedHex, flights, arrivals) : null;
   const held = selState && selState.kind !== "approaching" && liveSelected ? { name: flightName(liveSelected), text: stateText(selState, now) } : null;
 
-  const openWatch = () => {
-    setNotice(null);
-    const start = selectedHex && flights.some((f) => f.hex === selectedHex) ? selectedHex : (nextApproach(flights)?.hex ?? null);
-    setWatch({ hex: start });
-  };
 
   return (
     <div className={`app${selection?.kind === "aircraft" ? " flight-open" : ""}`}>
@@ -308,10 +301,7 @@ export function App() {
 
       <header className="topbar">
         <span className="spacer" />
-        <button type="button" className="btn accent-btn watch-btn" onClick={openWatch} title="Live stream, approach map and countdown for the next landing">
-          <span aria-hidden>▶</span> <span className="label-wide">Now landing</span>
-          <span className="label-narrow">Live</span>
-        </button>
+        <UpcomingList flights={flights} status={data.status} selectedHex={selectedHex} isOpen={(a) => bettable(a, now) || !!a.markets} onSelect={(a) => (setNotice(null), selectFlight(a))} />
         {!wallet && (
           <button type="button" className="btn primary" onClick={() => setWalletDialog(true)} title={health && !health.demo ? `Only ${health.network} wallets can connect right now` : undefined}>
             <span className="label-wide">Connect</span>Wallet
@@ -410,36 +400,25 @@ export function App() {
       <div className="legend" aria-hidden>
         <span>
           <span className="dot" style={{ background: "var(--yes)" }} />
-          Landing within 1 h
+          <span className="label-wide">Landing within 1 h</span>
+          <span className="label-narrow">≤ 1 h</span>
         </span>
         <span>
           <span className="ring" style={{ borderColor: "var(--accent)", background: "#0b0d10" }} />
-          Live-stream airport
+          <span className="label-wide">Live-stream airport</span>
+          <span className="label-narrow">Live cam</span>
         </span>
         <span>
           <span className="diamond" />
-          Departure airport
+          <span className="label-wide">Departure airport</span>
+          <span className="label-narrow">Departure</span>
         </span>
         <span>
           <span className="ring" />
-          Open market
+          <span className="label-wide">Open market</span>
+          <span className="label-narrow">Market</span>
         </span>
       </div>
-      {watch && (
-        <WatchView
-          hex={watch.hex}
-          flights={flights}
-          arrivals={arrivals}
-          status={data.status}
-          onWatch={(hex) => setWatch({ hex })}
-          onPredict={(hex) => {
-            const f = flights.find((x) => x.hex === hex);
-            setWatch(null);
-            if (f) selectFlight(f);
-          }}
-          onClose={() => setWatch(null)}
-        />
-      )}
       <Toasts items={toasts} onDismiss={(id) => setToasts((xs) => xs.filter((x) => x.id !== id))} />
       {walletDialog && <WalletDialog demo={!!health?.demo} network={health?.network ?? null} onPick={pickWallet} onClose={() => setWalletDialog(false)} />}
       {about && <AboutDialog onClose={() => setAbout(false)} />}

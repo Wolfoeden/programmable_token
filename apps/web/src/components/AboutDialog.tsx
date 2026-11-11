@@ -13,8 +13,8 @@ export function AboutDialog({ onClose }: { onClose: () => void }) {
       <div className="dialog" role="dialog" aria-modal="true" aria-label={t.aboutTitle} onClick={(e) => e.stopPropagation()}>
         <h2>{t.aboutTitle}</h2>
         <p>
-          The map shows flights that will land within the next hour at airports with a live stream: {WEBCAMS.map((w) => w.name).join(", ")}. Click one,
-          bet on when it touches down or which of several flights lands first, then watch it land on the stream.
+          The map shows flights that will land within the next hour at airports with a live stream: {WEBCAMS.map((w) => w.name).join(", ")}. Click one
+          and predict whether it lands before the given time.
         </p>
         <p>
           <strong>Odds from the pool.</strong> Every outcome has a pool. Its probability is its share of all stakes. Winners split all pools pro

@@ -419,9 +419,6 @@ export function App() {
           Open market
         </span>
       </div>
-      <footer className="attribution">
-        <span>{t.attribution}</span>
-      </footer>
       {watch && (
         <WatchView
           hex={watch.hex}

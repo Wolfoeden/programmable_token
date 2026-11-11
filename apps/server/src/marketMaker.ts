@@ -26,7 +26,7 @@ import {
   type ProposalResult,
   type Question,
 } from "@flightradar/core";
-import { buildCreateMarket, type FtMetadata } from "@flightradar/chain";
+import { buildCreateMarket, type FtMetadata, type MarketDatum, type MarketView } from "@flightradar/chain";
 import type { AdsbSource } from "./adsb.js";
 import type { ChainContext } from "./chain.js";
 import type { ChainIndex } from "./chainIndex.js";
@@ -64,6 +64,8 @@ function ticker(q: Question, outcome: number): string {
 
 export class MarketMaker {
   private creating = new Map<string, MarketMeta>();
+  /** Datum of each market being created, so bets can go in as orders before it is confirmed. */
+  private creatingViews = new Map<string, MarketView>();
   /** Departure-board markets (cancellation, pre-departure delay). Off by default. */
   allowScheduled = false;
 
@@ -85,10 +87,24 @@ export class MarketMaker {
 
   /** Markets submitted but not yet visible in the chain index. */
   pending(): MarketMeta[] {
-    for (const id of this.creating.keys()) if (this.index.market(id)) this.creating.delete(id);
+    for (const id of this.creating.keys()) if (this.index.market(id)) this.drop(id);
     const cutoff = Date.now() - 10 * 60_000;
-    for (const [id, m] of this.creating) if (m.createdAt < cutoff) this.creating.delete(id);
+    for (const [id, m] of this.creating) if (m.createdAt < cutoff) this.drop(id);
     return [...this.creating.values()];
+  }
+
+  /**
+   * A market submitted but not yet in the index, as the order builder needs
+   * it. An order only names the market id and deadline, so it can be placed
+   * at once; the batcher books it as soon as the market is confirmed.
+   */
+  pendingView(id: string): MarketView | undefined {
+    return this.index.market(id) ? undefined : this.creatingViews.get(id);
+  }
+
+  private drop(id: string): void {
+    this.creating.delete(id);
+    this.creatingViews.delete(id);
   }
 
   private findExisting(q: Question): string | undefined {
@@ -195,6 +211,7 @@ export class MarketMaker {
         decimals: 6,
       }));
     let marketId = "";
+    let datum: MarketDatum | undefined;
     const txHash = await this.ctx.operator.run(async (walletUtxos) => {
       const built = await buildCreateMarket(
         this.ctx.operator.lucid,
@@ -213,6 +230,7 @@ export class MarketMaker {
         { walletUtxos },
       );
       marketId = built.marketId;
+      datum = built.datum;
       return built.tx;
     });
     const meta: MarketMeta = {
@@ -227,6 +245,7 @@ export class MarketMaker {
     };
     this.store.putMeta(meta);
     this.creating.set(marketId, meta);
+    if (datum) this.creatingViews.set(marketId, { utxo: { txHash, outputIndex: 0, address: this.ctx.contracts.marketAddress, assets: {} }, datum });
     for (const f of flightsOf(q)) this.tracker.watch(f, proposal.resolveDeadline);
     log.info("market created", { marketId, kind: q.kind, txHash, probabilities: proposal.probabilities.map((p) => p.toFixed(3)) });
     return { marketId, txHash, existing: false };

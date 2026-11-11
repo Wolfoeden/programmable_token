@@ -108,7 +108,8 @@ export function MarketCard({ market: m, highlight, simple, busy, onPrepare, onCo
   const [outcome, setOutcome] = useState<number | null>(null);
   const [stakeAda, setStakeAda] = useState("10");
   const [prepared, setPrepared] = useState<PreparedBet | null>(null);
-  const open = m.phase === "open" && m.closeTime > now;
+  // A market still being confirmed already takes bets (as orders the batcher books once it is on chain).
+  const open = (m.phase === "open" || m.phase === "creating") && m.closeTime > now;
   const pools = useMemo(() => m.pools.map((p) => BigInt(p)), [m.pools.join(",")]);
   const stake = BigInt(Math.max(0, Math.round((Number(stakeAda.replace(",", ".")) || 0) * 1_000_000)));
   const q = outcome !== null && stake > 0n ? quote(pools, outcome, BigInt(m.feeBps), stake) : null;

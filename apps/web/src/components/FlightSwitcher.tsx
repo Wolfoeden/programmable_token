@@ -1,4 +1,3 @@
-import { bothZones } from "../format";
 import type { AircraftDto, DataStatus } from "../types";
 
 export interface FlightSwitcherProps {
@@ -13,10 +12,15 @@ export interface FlightSwitcherProps {
   isOpen?: (a: AircraftDto) => boolean;
 }
 
-/** "Flight 2 of 8" with previous / next, over the bettable flights sorted by arrival. */
+/**
+ * Bottom control: a round button that opens the betting panel for the
+ * current flight, with arrows to the previous and next flight landing soon
+ * (sorted by arrival).
+ */
 export function FlightSwitcher({ flights, selectedHex, status, onSelect, notice, held, isOpen }: FlightSwitcherProps) {
   const idx = flights.findIndex((f) => f.hex === selectedHex);
   const cur = idx >= 0 ? flights[idx] : undefined;
+  const target = cur ?? flights.find((f) => isOpen?.(f)) ?? flights[0];
   const step = (d: number) => {
     if (flights.length === 0) return;
     const next = idx < 0 ? (d > 0 ? 0 : flights.length - 1) : (idx + d + flights.length) % flights.length;
@@ -25,59 +29,47 @@ export function FlightSwitcher({ flights, selectedHex, status, onSelect, notice,
 
   let message: string | null = null;
   if (flights.length === 0) {
-    if (status === "loading") message = "Loading flight data …";
-    else if (status === "error") message = "Flight data is not reachable right now. Retrying …";
-    else if (status === "unavailable") message = "The flight data source is not responding right now. Retrying …";
-    else message = "No matching flights right now: none of the live-stream airports has a short flight landing within the hour.";
+    if (status === "loading") message = "Loading flights …";
+    else if (status === "error") message = "Flight data not reachable. Retrying …";
+    else if (status === "unavailable") message = "Flight data source not responding. Retrying …";
+    else message = "No flight is landing at a live-stream airport within the hour.";
+  } else if (status === "error" || status === "unavailable") {
+    message = "Flight data may be out of date.";
   }
+  const warn = status === "error" || status === "unavailable";
+  const open = target && isOpen ? isOpen(target) : undefined;
 
   return (
     <div className="switcher" role="group" aria-label="Choose a flight">
-      {message ? (
-        <div className={`switcher-msg${status === "error" || status === "unavailable" ? " warn" : ""}`} role="status">
-          {message}
-        </div>
-      ) : (
-        <>
-          <button type="button" className="icon-btn" onClick={() => step(-1)} aria-label="Previous flight" disabled={flights.length < 2 && idx >= 0}>
-            ‹
-          </button>
-          <button type="button" className="switcher-main" onClick={() => (cur ? onSelect(cur) : step(1))}>
-            <span className="switcher-count num">
-              {cur
-                ? `Flight ${idx + 1} of ${flights.length}`
-                : held
-                  ? `Following ${held.name} · ${flights.length} other flight${flights.length === 1 ? "" : "s"} landing soon`
-                  : `${flights.length} flight${flights.length === 1 ? "" : "s"} landing soon`}
-            </span>
-            <span className="switcher-what num">
-              {cur ? (
-                <>
-                  <strong>{cur.flightNumber || cur.callsign}</strong> → {cur.airport}
-                  {cur.etaMs ? ` · ETA ${bothZones(cur.etaMs).utc}` : ""}
-                  {isOpen && <span className={`bet-tag${isOpen(cur) ? " open" : ""}`}>{isOpen(cur) ? "betting open" : "betting closed"}</span>}
-                </>
-              ) : held ? (
-                "Next: show the soonest arrival"
-              ) : (
-                "Show the next arrival"
-              )}
-            </span>
-          </button>
-          <button type="button" className="icon-btn" onClick={() => step(1)} aria-label="Next flight" disabled={flights.length < 2 && idx >= 0}>
-            ›
-          </button>
-        </>
-      )}
-      {(status === "error" || status === "unavailable") && flights.length > 0 && (
-        <div className="switcher-msg warn small">
-          {status === "error"
-            ? "The site's server is not reachable: showing the last known list, which may be out of date."
-            : "The flight data source is not responding: this list may be out of date."}
+      {(message || held || notice) && (
+        <div className={`switcher-msg${warn ? " warn" : ""}`} role="status">
+          {held?.text ?? message ?? notice}
         </div>
       )}
-      {held && <div className="switcher-msg small" role="status">{held.text}</div>}
-      {notice && !held && <div className="switcher-msg small">{notice}</div>}
+      <div className="switcher-row">
+        <button type="button" className="icon-btn" onClick={() => step(-1)} aria-label="Previous flight" disabled={flights.length === 0 || (flights.length === 1 && idx === 0)}>
+          ‹
+        </button>
+        <button
+          type="button"
+          className={`bet-round${open ? " open" : ""}`}
+          disabled={!target}
+          onClick={() => target && onSelect(target)}
+          aria-label={target ? `Bet on ${target.flightNumber || target.callsign}` : "No flight"}
+        >
+          <span className="bet-round-label">Bet</span>
+          <span className="bet-round-count num">{flights.length ? (idx >= 0 ? `${idx + 1}/${flights.length}` : `${flights.length}`) : "–"}</span>
+        </button>
+        <button type="button" className="icon-btn" onClick={() => step(1)} aria-label="Next flight" disabled={flights.length === 0 || (flights.length === 1 && idx === 0)}>
+          ›
+        </button>
+      </div>
+      {target && (
+        <div className="switcher-what num">
+          <strong>{target.flightNumber || target.callsign}</strong> → {target.airport}
+          {open !== undefined && <span className={`bet-tag${open ? " open" : ""}`}>{open ? "open" : "closed"}</span>}
+        </div>
+      )}
     </div>
   );
 }

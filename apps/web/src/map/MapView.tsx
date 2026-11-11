@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Map as MlMap, NavigationControl, setWorkerUrl, type GeoJSONSource, type MapMouseEvent, type MapGeoJSONFeature } from "maplibre-gl";
+import { AttributionControl, Map as MlMap, NavigationControl, setWorkerUrl, type GeoJSONSource, type MapMouseEvent, type MapGeoJSONFeature } from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import type { Feature as GeoFeature, FeatureCollection, Point } from "geojson";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -60,6 +60,22 @@ export function MapView(props: MapViewProps) {
     if (import.meta.env.DEV) (window as unknown as { __map: MlMap }).__map = map;
     map.touchZoomRotate.disableRotation();
     map.addControl(new NavigationControl({ showCompass: false }), "bottom-right");
+    // Required credits (ODbL, OpenStreetMap) behind the small ⓘ button.
+    map.addControl(
+      new AttributionControl({
+        compact: true,
+        customAttribution: [
+          '<a href="https://adsb.lol" target="_blank" rel="noopener">adsb.lol</a> (ODbL)',
+          '<a href="https://www.adsbdb.com" target="_blank" rel="noopener">adsbdb.com</a>',
+          '<a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a>',
+        ],
+      }),
+      "bottom-left",
+    );
+    // Start folded: only the ⓘ shows until someone opens it.
+    const fold = () => container.current?.querySelector(".maplibregl-ctrl-attrib")?.classList.remove("maplibregl-compact-show");
+    map.once("load", fold);
+    map.once("idle", fold);
 
     map.on("load", async () => {
       map.addImage("plane", planeImage(64), { sdf: true, pixelRatio: 2 });

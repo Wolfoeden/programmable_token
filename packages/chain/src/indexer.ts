@@ -18,8 +18,10 @@ function holdsMarketNft(c: Contracts, u: UTxO, marketId: string): boolean {
   return u.assets[c.marketHash + MARKET_NFT_PREFIX + marketId] === 1n;
 }
 
+// Query by address, not by script credential: the Koios provider rejects
+// credential queries ("Credential Type is not supported in Koios yet").
 export async function fetchMarkets(lucid: LucidEvolution, c: Contracts): Promise<MarketView[]> {
-  const utxos = await lucid.utxosAt({ type: "Script", hash: c.marketHash });
+  const utxos = await lucid.utxosAt(c.marketAddress);
   const out: MarketView[] = [];
   for (const u of utxos) {
     if (!u.datum) continue;
@@ -34,7 +36,7 @@ export async function fetchMarkets(lucid: LucidEvolution, c: Contracts): Promise
 }
 
 export async function fetchOrders(lucid: LucidEvolution, c: Contracts): Promise<OrderView[]> {
-  const utxos = await lucid.utxosAt({ type: "Script", hash: c.orderHash });
+  const utxos = await lucid.utxosAt(c.orderAddress);
   const out: OrderView[] = [];
   for (const u of utxos) {
     if (!u.datum) continue;
@@ -48,6 +50,6 @@ export async function fetchOrders(lucid: LucidEvolution, c: Contracts): Promise<
 }
 
 export async function fetchReferenceNfts(lucid: LucidEvolution, c: Contracts, marketId: string): Promise<UTxO[]> {
-  const utxos = await lucid.utxosAt({ type: "Script", hash: c.metadataHash });
+  const utxos = await lucid.utxosAt(c.metadataAddress);
   return utxos.filter((u) => Object.keys(u.assets).some((k) => k.startsWith(c.marketHash) && k.includes(marketId)));
 }

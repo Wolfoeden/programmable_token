@@ -79,7 +79,7 @@ export async function buildCreateMarket(
   c: Contracts,
   p: CreateMarketParams,
   opts: BuildOptions = {},
-): Promise<{ tx: TxSignBuilder; marketId: string }> {
+): Promise<{ tx: TxSignBuilder; marketId: string; datum: MarketDatum }> {
   const n = outcomeCount(p.question);
   const operatorAddress = await lucid.wallet().address();
   const utxos = opts.walletUtxos ?? (await lucid.wallet().getUtxos());
@@ -126,7 +126,7 @@ export async function buildCreateMarket(
     .addSigner(operatorAddress)
     .validTo(Math.min(p.now + WINDOW_MS, p.closeTime - 1000))
     .complete({ presetWalletInputs: utxos });
-  return { tx: built, marketId };
+  return { tx: built, marketId, datum };
 }
 
 // ## Bets

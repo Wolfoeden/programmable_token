@@ -186,7 +186,7 @@ button {
 /* Banner under the top bar */
 .banner {
   position: absolute;
-  top: 78px;
+  top: 20px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 9;
@@ -717,8 +717,15 @@ details.rules summary {
   text-align: right;
 }
 
-.maplibregl-ctrl-attrib {
-  display: none;
+/* Map credits: a small ⓘ bottom left that opens the attribution. */
+.maplibregl-ctrl-attrib.maplibregl-compact {
+  background: rgba(11, 13, 16, 0.8);
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.maplibregl-ctrl-attrib a {
+  color: var(--text-2);
 }
 
 .legend {
@@ -777,26 +784,36 @@ details.rules summary {
 /* Flight switcher */
 .switcher {
   position: absolute;
-  top: 12px;
+  bottom: 16px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 11;
-  width: min(460px, calc(100% - 24px));
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 6px;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  padding: 6px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(10px);
+  gap: 6px;
+  pointer-events: none;
+  max-width: calc(100% - 24px);
+}
+
+.switcher > * {
+  pointer-events: auto;
+}
+
+.switcher-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .switcher .icon-btn {
   margin: 0;
-  font-size: 18px;
+  width: 44px;
+  height: 44px;
+  font-size: 22px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow);
 }
 
 .switcher .icon-btn:disabled {
@@ -804,45 +821,69 @@ details.rules summary {
   cursor: default;
 }
 
-.switcher-main {
+.bet-round {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  min-width: 0;
-  padding: 4px 8px;
-  border: none;
-  background: none;
-  text-align: left;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  border: 2px solid var(--border-strong);
+  background: var(--surface-3);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  cursor: pointer;
 }
 
-.switcher-count {
+.bet-round.open {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--accent-ink);
+}
+
+.bet-round:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.bet-round-label {
+  font-weight: 750;
+  font-size: 16px;
+}
+
+.bet-round-count {
   font-size: 11px;
-  color: var(--text-3);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  opacity: 0.8;
 }
 
-.switcher-what {
-  max-width: 100%;
+.switcher-what,
+.switcher-msg {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(11, 13, 16, 0.85);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .switcher-msg {
-  grid-column: 1 / -1;
-  padding: 6px 8px;
-  color: var(--text-2);
-  font-size: 13px;
+  white-space: normal;
+  text-align: center;
+  max-width: 360px;
 }
 
 .switcher-msg.warn {
   color: var(--warn);
 }
 
-.switcher-msg.small {
-  font-size: 12px;
-  padding-top: 0;
+.switcher-what .bet-tag {
+  margin-left: 6px;
 }
 
 /* Arrival block, notes */
@@ -1086,14 +1127,6 @@ details.rules summary {
 
 /* ## Simple flight panel */
 
-@media (min-width: 721px) and (max-width: 1150px) {
-  .switcher {
-    top: 64px;
-  }
-  .banner {
-    top: 130px;
-  }
-}
 
 .bet-tag {
   margin-left: 8px;
@@ -1526,10 +1559,7 @@ details.rules summary {
     text-align: center;
   }
   .switcher {
-    top: 86px;
-    left: 10px;
-    transform: none;
-    width: calc(100% - 20px);
+    bottom: 22px;
   }
   .collapse-btn {
     display: grid;
@@ -1584,10 +1614,7 @@ details.rules summary {
     display: none !important;
   }
   .banner {
-    top: 150px !important;
-  }
-  .app.flight-open .banner {
-    top: 76px !important;
+    top: 82px !important;
   }
   .route .code {
     font-size: 18px;

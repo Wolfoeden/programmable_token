@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { airportByIcao, destinationPoint, type Aircraft } from "@flightradar/core";
+import { airportByIcao, bearingDeg, destinationPoint, type Aircraft } from "@flightradar/core";
 import type { AdsbSource } from "../src/adsb.js";
 import { buildApi } from "../src/api.js";
 import { Batcher } from "../src/batcher.js";
@@ -192,5 +192,27 @@ describe("server pipeline (emulator, fake flight data)", () => {
     const after = await lovelaceOf("alice");
     // payout minus the claim order's batcher fee and network fees
     expect(after - before).toBeGreaterThan(BigInt(claim.value) - 1_000_000n);
+  });
+
+  it("takes a bet as an order while the market is still being confirmed", async () => {
+    const LAS = airportByIcao("KLAS")!;
+    const LAX = airportByIcao("KLAX")!;
+    const p = destinationPoint(LAS, bearingDeg(LAS, LAX), 300);
+    const hex2 = "a1b2c3";
+    adsb.planes.set(hex2, { hex: hex2, callsign: "SWR9", lat: p.lat, lon: p.lon, altitudeFt: 22000, onGround: false, groundSpeedKt: 300, trackDeg: bearingDeg(p, LAS), verticalRateFpm: -1000, timestamp: ctx.now() });
+    const created = await call<{ marketId: string; existing: boolean }>("POST", "/api/markets", { kind: "landing_before", hex: hex2 });
+    const { markets } = await call<{ markets: Array<{ id: string; phase: string }> }>("GET", "/api/markets");
+    expect(markets.find((m) => m.id === created.marketId)?.phase).toBe("creating");
+    // No block yet: the bet is built against the pending market.
+    const w = await call<{ address: string; utxos: string[] }>("GET", "/api/demo/wallets/carol/utxos");
+    const { tx } = await call<{ tx: string }>("POST", "/api/tx/bet", { ...w, marketId: created.marketId, outcome: 1, stake: "5000000" });
+    const { witness } = await call<{ witness: string }>("POST", "/api/demo/wallets/carol/sign", { tx });
+    await call("POST", "/api/tx/submit", { tx, witness });
+    await block();
+    await batcher.tick(index.live, index.orders);
+    await block();
+    const { market } = await call<{ market: { phase: string; pools: string[] } }>("GET", `/api/markets/${created.marketId}`);
+    expect(market.phase).toBe("open");
+    expect(market.pools.reduce((a, b) => a + BigInt(b), 0n)).toBe(25_000_000n);
   });
 });

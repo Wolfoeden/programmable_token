@@ -34,7 +34,7 @@ export const t = {
   lost: "lost",
   closesIn: "Closes in",
   closed: "Betting closed, waiting for touchdown",
-  creating: "Creating market …",
+  creating: "Confirming on chain · you can bet now",
   resolved: (label: string) => `Result: ${label}`,
   voided: "Voided, stakes are refunded",
   pool: "Pool",

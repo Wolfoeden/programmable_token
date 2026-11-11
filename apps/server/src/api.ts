@@ -340,7 +340,9 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
     const stake = BigInt(body.stake);
     if (stake < 1_000_000n) throw new HttpError(422, "stake_too_small", "Minimum stake is 1 ADA");
     const lucid = await walletLucid(body);
-    const m = requireMarket(body.marketId, body.mode === "direct");
+    // A market still being confirmed takes bets as orders straight away.
+    const pending = body.mode === "order" ? s.maker.pendingView(body.marketId) : undefined;
+    const m = pending ?? requireMarket(body.marketId, body.mode === "direct");
     const tx =
       body.mode === "direct"
         ? await buildBet(lucid, s.ctx.contracts, m, body.outcome, stake, now())

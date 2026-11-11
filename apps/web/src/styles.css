@@ -186,7 +186,7 @@ button {
 /* Banner under the top bar */
 .banner {
   position: absolute;
-  top: 64px;
+  top: 78px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 9;
@@ -724,11 +724,12 @@ details.rules summary {
 .legend {
   position: absolute;
   left: 12px;
-  bottom: 10px;
+  top: 14px;
   z-index: 5;
   display: flex;
-  gap: 10px;
-  align-items: center;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
   font-size: 11px;
   color: var(--text-3);
   background: rgba(11, 13, 16, 0.7);
@@ -776,10 +777,11 @@ details.rules summary {
 /* Flight switcher */
 .switcher {
   position: absolute;
-  top: 104px;
-  left: 12px;
-  z-index: 8;
-  width: min(420px, calc(100% - 24px));
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 11;
+  width: min(460px, calc(100% - 24px));
   display: grid;
   grid-template-columns: auto 1fr auto;
   gap: 6px;
@@ -1083,6 +1085,45 @@ details.rules summary {
 }
 
 /* ## Simple flight panel */
+
+@media (min-width: 721px) and (max-width: 1150px) {
+  .switcher {
+    top: 64px;
+  }
+  .banner {
+    top: 130px;
+  }
+}
+
+.bet-tag {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  border: 1px solid var(--border-strong);
+}
+
+.bet-tag.open {
+  color: var(--yes);
+  border-color: rgba(61, 220, 151, 0.5);
+}
+
+.closed-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: 14px;
+}
+
+.sheet-handle {
+  display: none;
+}
 
 .panel-title {
   flex: 1;
@@ -1485,8 +1526,9 @@ details.rules summary {
     text-align: center;
   }
   .switcher {
-    top: 98px;
+    top: 86px;
     left: 10px;
+    transform: none;
     width: calc(100% - 20px);
   }
   .collapse-btn {
@@ -1532,6 +1574,55 @@ details.rules summary {
     grid-template-columns: repeat(2, 1fr);
   }
   .legend {
+    top: 12px;
+    left: 10px;
+    gap: 2px;
+    font-size: 10px;
+    padding: 4px 6px;
+  }
+  .watch-btn {
+    display: none !important;
+  }
+  .banner {
+    top: 150px !important;
+  }
+  .app.flight-open .banner {
+    top: 76px !important;
+  }
+  .route .code {
+    font-size: 18px;
+  }
+  .panel.simple {
+    max-height: none;
+    transition: height 0.2s ease;
+  }
+  .panel.simple .panel-head {
+    position: relative;
+    padding-top: 16px;
+    touch-action: none;
+    cursor: grab;
+  }
+  .sheet-handle {
+    display: block;
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    width: 40px;
+    height: 4px;
+    margin-left: -20px;
+    border-radius: 2px;
+    background: var(--border-strong);
+  }
+  .panel.simple.sheet-peek {
+    height: 340px;
+  }
+  .panel.simple.sheet-peek .panel-body {
+    overflow: hidden;
+  }
+  .panel.simple.sheet-full {
+    height: 88vh;
+  }
+  .panel.simple.sheet-min .panel-body {
     display: none;
   }
   .attribution {

@@ -9,10 +9,12 @@ export interface FlightSwitcherProps {
   notice: string | null;
   /** The selected flight is no longer listed: its name and what is known. */
   held?: { name: string; text: string } | null;
+  /** Whether a flight still takes predictions. */
+  isOpen?: (a: AircraftDto) => boolean;
 }
 
 /** "Flight 2 of 8" with previous / next, over the bettable flights sorted by arrival. */
-export function FlightSwitcher({ flights, selectedHex, status, onSelect, notice, held }: FlightSwitcherProps) {
+export function FlightSwitcher({ flights, selectedHex, status, onSelect, notice, held, isOpen }: FlightSwitcherProps) {
   const idx = flights.findIndex((f) => f.hex === selectedHex);
   const cur = idx >= 0 ? flights[idx] : undefined;
   const step = (d: number) => {
@@ -53,6 +55,7 @@ export function FlightSwitcher({ flights, selectedHex, status, onSelect, notice,
                 <>
                   <strong>{cur.flightNumber || cur.callsign}</strong> → {cur.airport}
                   {cur.etaMs ? ` · ETA ${bothZones(cur.etaMs).utc}` : ""}
+                  {isOpen && <span className={`bet-tag${isOpen(cur) ? " open" : ""}`}>{isOpen(cur) ? "betting open" : "betting closed"}</span>}
                 </>
               ) : held ? (
                 "Next: show the soonest arrival"

@@ -381,7 +381,7 @@ export function MapView(props: MapViewProps) {
     mapRef.current.flyTo({
       center: [props.flyTo.lon, props.flyTo.lat],
       zoom: props.flyTo.zoom ?? Math.max(mapRef.current.getZoom(), 7),
-      padding: mobile ? { top: 120, bottom: Math.round(window.innerHeight * 0.45), left: 20, right: 20 } : { top: 110, bottom: 40, left: 40, right: 440 },
+      padding: mobile ? { top: 80, bottom: 360, left: 20, right: 20 } : { top: 90, bottom: 40, left: 200, right: 440 },
     });
   }, [props.flyTo?.key]);
 

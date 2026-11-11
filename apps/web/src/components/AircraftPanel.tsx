@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { CLOSE_LEAD_MIN, estimateEta } from "@flightradar/core/eta";
 import { distanceKm } from "@flightradar/core/geo";
 import { webcamFor } from "@flightradar/core/webcams";
@@ -25,12 +25,34 @@ export interface AircraftPanelProps {
   /** Position in the list of flights landing soon, and switching. */
   position?: { index: number; count: number } | null;
   onStep?: (dir: -1 | 1) => void;
+  /** The soonest other flight that still takes predictions. */
+  nextOpen?: AircraftDto | null;
+  onSelectFlight?: (a: AircraftDto) => void;
 }
+
+type Sheet = "min" | "peek" | "full";
 
 /** A flight: where from, where to, the airport's stream and its prediction. */
 export function AircraftPanel(p: AircraftPanelProps) {
   const now = useNow(5000);
-  const [collapsed, setCollapsed] = useState(false);
+  // Mobile bottom sheet: head only, head + prediction (default), or full height.
+  const [sheet, setSheet] = useState<Sheet>("peek");
+  const drag = useRef<{ y: number } | null>(null);
+  const onDown = (e: React.PointerEvent) => {
+    if ((e.target as HTMLElement).closest("button")) return;
+    drag.current = { y: e.clientY };
+    // Keep receiving the pointer when the finger leaves the head while dragging.
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  const onUp = (e: React.PointerEvent) => {
+    const d = drag.current;
+    drag.current = null;
+    if (!d) return;
+    const dy = e.clientY - d.y;
+    if (Math.abs(dy) < 8) setSheet((s) => (s === "full" ? "peek" : "full")); // tap
+    else if (dy < -30) setSheet((s) => (s === "min" ? "peek" : "full"));
+    else if (dy > 30) setSheet((s) => (s === "full" ? "peek" : "min"));
+  };
   // Use the detail only if it belongs to this aircraft (it loads asynchronously).
   const detail = p.detail?.aircraft.hex === p.hex ? p.detail : null;
   const a = p.live ?? detail?.aircraft;
@@ -47,8 +69,9 @@ export function AircraftPanel(p: AircraftPanelProps) {
   const tooClose = !!etaMs && etaMs - now < (CLOSE_LEAD_MIN + 5) * 60_000;
 
   return (
-    <aside className={`panel simple${collapsed ? " collapsed" : ""}`} aria-label="Flight">
-      <div className="panel-head">
+    <aside className={`panel simple sheet-${sheet}`} aria-label="Flight">
+      <div className="panel-head" onPointerDown={onDown} onPointerUp={onUp} onPointerCancel={() => (drag.current = null)}>
+        <span className="sheet-handle" aria-hidden />
         {p.onStep && (
           <button type="button" className="icon-btn step-btn" onClick={() => p.onStep!(-1)} disabled={!p.position || p.position.count < 2} aria-label="Previous flight">
             ‹
@@ -65,8 +88,13 @@ export function AircraftPanel(p: AircraftPanelProps) {
             ›
           </button>
         )}
-        <button type="button" className="icon-btn collapse-btn" onClick={() => setCollapsed((c) => !c)} aria-expanded={!collapsed} aria-label={collapsed ? "Expand" : "Collapse"}>
-          {collapsed ? "▴" : "▾"}
+        <button
+          type="button"
+          className="icon-btn collapse-btn"
+          onClick={() => setSheet((s) => (s === "min" ? "peek" : s === "peek" ? "full" : "min"))}
+          aria-label={sheet === "full" ? "Minimise" : "Show more"}
+        >
+          {sheet === "full" ? "▾" : "▴"}
         </button>
         <button type="button" className="icon-btn" onClick={p.onClose} aria-label={t.close}>
           ✕
@@ -105,8 +133,18 @@ export function AircraftPanel(p: AircraftPanelProps) {
               Predict this landing
             </button>
           ) : sorted.length === 0 ? (
-            <div className="pool-note">
-              {a?.airport ? `Predictions close ${CLOSE_LEAD_MIN} minutes before landing; this flight is too close.` : "No prediction for this flight."}
+            <div className="closed-box">
+              <div>
+                {a?.airport
+                  ? `Betting is closed for this flight: predictions close ${CLOSE_LEAD_MIN} minutes before the estimated landing.`
+                  : "No prediction for this flight."}
+              </div>
+              {p.nextOpen && p.onSelectFlight && (
+                <button type="button" className="btn primary" onClick={() => p.onSelectFlight!(p.nextOpen!)}>
+                  Bet on {p.nextOpen.flightNumber || p.nextOpen.callsign} → {p.nextOpen.airport}
+                </button>
+              )}
+              {!p.nextOpen && <div className="muted">No other flight is open for betting right now.</div>}
             </div>
           ) : null)}
 

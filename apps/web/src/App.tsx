@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { WEBCAMS as webcams, webcamFor } from "@flightradar/core/webcams";
+import { CLOSE_LEAD_MIN } from "@flightradar/core/eta";
 import { api } from "./api";
 import { AboutDialog } from "./components/AboutDialog";
 import { AircraftPanel } from "./components/AircraftPanel";
@@ -28,6 +29,9 @@ const WALLET_KEY = "frf.wallet";
 function bettableFlights(list: AircraftDto[]): AircraftDto[] {
   return list.filter((a) => a.airport && a.etaMs && webcamFor(a.airport)).sort((x, y) => x.etaMs! - y.etaMs!);
 }
+
+/** Still takes a new prediction: closes 20 min before landing, needs 5 min of betting. */
+const bettable = (a: AircraftDto, now: number) => !!a.etaMs && a.etaMs - now >= (CLOSE_LEAD_MIN + 5) * 60_000;
 
 const pageFromHash = (): InfoPage | null => {
   const h = window.location.hash.replace("#", "");
@@ -299,7 +303,7 @@ export function App() {
 
       <header className="topbar">
         <span className="spacer" />
-        <button type="button" className="btn accent-btn" onClick={openWatch} title="Live stream, approach map and countdown for the next landing">
+        <button type="button" className="btn accent-btn watch-btn" onClick={openWatch} title="Live stream, approach map and countdown for the next landing">
           <span aria-hidden>▶</span> <span className="label-wide">Now landing</span>
           <span className="label-narrow">Live</span>
         </button>
@@ -333,6 +337,7 @@ export function App() {
           notice={notice}
           held={held}
           onSelect={(a) => (setNotice(null), selectFlight(a))}
+          isOpen={(a) => bettable(a, now) || !!a.markets}
         />
 
 
@@ -351,6 +356,8 @@ export function App() {
           onCreate={onCreate}
           onClose={() => setSelection(null)}
           position={{ index: flights.findIndex((f) => f.hex === selection.hex), count: flights.length }}
+          nextOpen={flights.find((f) => f.hex !== selection.hex && (bettable(f, now) || !!f.markets)) ?? null}
+          onSelectFlight={(f) => (setNotice(null), selectFlight(f))}
           onStep={(dir) => {
             if (flights.length === 0) return;
             const i = flights.findIndex((f) => f.hex === selection.hex);

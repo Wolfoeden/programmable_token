@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
+import { positionsIn } from "@flightradar/chain";
 import { airportByIcao, bearingDeg, destinationPoint, type Aircraft } from "@flightradar/core";
 import type { AdsbSource } from "../src/adsb.js";
 import { buildApi } from "../src/api.js";
@@ -193,6 +194,17 @@ describe("server pipeline (emulator, fake flight data)", () => {
     const after = await lovelaceOf("alice");
     // payout minus the claim order's batcher fee and network fees
     expect(after - before).toBeGreaterThan(BigInt(claim.value) - 1_000_000n);
+
+    // The operator's seed on the winning side comes back without waiting for Close.
+    const opPositions = async () => {
+      const assets: Record<string, bigint> = {};
+      for (const u of await ctx.operator.lucid.wallet().getUtxos()) for (const [k, v] of Object.entries(u.assets)) if (k !== "lovelace") assets[k] = (assets[k] ?? 0n) + v;
+      return positionsIn(ctx.contracts, assets, marketId);
+    };
+    expect((await opPositions()).get(0) ?? 0n).toBeGreaterThan(0n);
+    await oracle.reclaimSeeds(index.live, (id) => index.isStale(id));
+    await block();
+    expect((await opPositions()).get(0) ?? 0n).toBe(0n);
   });
 
   it("takes a bet as an order while the market is still being confirmed", async () => {

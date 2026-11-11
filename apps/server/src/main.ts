@@ -61,6 +61,7 @@ async function main() {
   loop("oracle", 15_000, () => oracle.tick(index.live));
   loop("batcher", 10_000, () => batcher.tick(index.live, index.orders));
   loop("sweeper", 10 * 60_000, () => oracle.sweep(index.live));
+  loop("seed-reclaim", 60_000, () => oracle.reclaimSeeds(index.live, (id) => index.isStale(id)));
   if (!cfg.DEMO) loop("operator-split", 5 * 60_000, () => keepOperatorSplit(ctx.operator));
 
   const shutdown = async () => {

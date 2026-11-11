@@ -60,12 +60,14 @@ export const api = {
   market: (id: string) => request<{ market: MarketDto }>(`/api/markets/${id}`),
   createMarket: (body: unknown) => post<{ marketId: string; txHash?: string; existing: boolean }>("/api/markets", body),
   departures: (icao: string) => request<DeparturesResponse>(`/api/airports/${icao}/departures`),
-  betTx: (w: WalletPayload, marketId: string, outcome: number, stake: bigint) =>
+  jackpot: () => request<{ lovelace: string; outputs: number; address: string; sideBet: string }>("/api/jackpot"),
+  betTx: (w: WalletPayload, marketId: string, outcome: number, stake: bigint, side = false) =>
     post<{ tx: string; quote: { payout: string; multiplier: number; probabilityAfter: number }; costs: BetCosts }>("/api/tx/bet", {
       ...w,
       marketId,
       outcome,
       stake: stake.toString(),
+      side,
     }),
   claimTx: (w: WalletPayload, marketId: string) => post<{ tx: string; value: string }>("/api/tx/claim", { ...w, marketId }),
   operatorDeposits: (address: string) =>

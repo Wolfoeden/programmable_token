@@ -1431,6 +1431,36 @@ details.rules summary {
   margin: 4px 0;
 }
 
+.menu-jackpot {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  padding: 8px 12px;
+  font-size: 14px;
+}
+
+.menu-jackpot strong {
+  color: var(--accent);
+}
+
+.menu-jackpot small {
+  grid-column: 1 / -1;
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.side-bet {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.side-bet input {
+  margin-top: 2px;
+}
+
 .menu-wallet {
   display: flex;
   align-items: center;

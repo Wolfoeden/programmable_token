@@ -40,6 +40,10 @@ export interface Contracts {
   order: Script;
   orderHash: string;
   orderAddress: string;
+  /** Jackpot for opt-in side bets; payout needs the operator. */
+  jackpot: Script;
+  jackpotHash: string;
+  jackpotAddress: string;
   /** Optional stake credential for the market and order addresses. */
   stake?: Credential;
 }
@@ -55,9 +59,14 @@ export function loadContracts(network: Network, operatorKeyHash: string, stake?:
     script: applyDoubleCborEncoding(applyParamsToScript(compiled("market.market.spend"), [operatorKeyHash, metadataHash])),
   };
   const marketHash = validatorToScriptHash(market);
+  const jackpot: Script = {
+    type: "PlutusV3",
+    script: applyDoubleCborEncoding(applyParamsToScript(compiled("jackpot.jackpot.spend"), [operatorKeyHash])),
+  };
+  const jackpotHash = validatorToScriptHash(jackpot);
   const order: Script = {
     type: "PlutusV3",
-    script: applyDoubleCborEncoding(applyParamsToScript(compiled("order.order.spend"), [marketHash])),
+    script: applyDoubleCborEncoding(applyParamsToScript(compiled("order.order.spend"), [marketHash, jackpotHash])),
   };
   const orderHash = validatorToScriptHash(order);
   return {
@@ -72,6 +81,9 @@ export function loadContracts(network: Network, operatorKeyHash: string, stake?:
     order,
     orderHash,
     orderAddress: validatorToAddress(network, order, stake),
+    jackpot,
+    jackpotHash,
+    jackpotAddress: validatorToAddress(network, jackpot),
     ...(stake ? { stake } : {}),
   };
 }

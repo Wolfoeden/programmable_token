@@ -111,6 +111,8 @@ Zustandsübergänge der Markt-UTxO:
 - **Claim**: verbrannte Gewinner-Token gleich Auszahlung, bei Annullierung 1:1.
 - **Close**: der Betreiber räumt frühestens 30 Tage nach der Auflösungsfrist ab, standardmäßig nach 90 Tagen.
 
+**Jackpot (Side Bets):** Beim Wetten kann man optional 1 ₳ in einen Jackpot geben. Der Betrag reist im Order-Datum (`BetOrder.side`) mit. Der Order-Validator erzwingt, dass beim Einbuchen der Jackpot-Vertrag (`jackpot.ak`) um mindestens die Summe aller Side Bets der Transaktion wächst. Der Batcher kann sie also nicht behalten. Er legt sie als neue Ausgabe an der Jackpot-Adresse ab, und der Jackpot ist die Summe aller Ausgaben dort. Ausgeben, um hinzuzufügen, darf jeder, solange der Jackpot nicht schrumpft. Auszahlen darf vorerst nur der Betreiber: Die Gewinnregel, ein noch zu definierender Extremfall einer Wette, folgt. Der Stand steht im Menü und unter `/api/jackpot`.
+
 Damit viele gleichzeitig wetten können, gibt es einen Order-Validator. Wer wettet, legt den Einsatz als Order ab, und ein Batcher bucht bis zu 20 Orders in einer Transaktion ein. Jede Auszahlung an den Order-Besitzer trägt als Datum die Output-Referenz der Order. So kann eine Zahlung nie zwei Orders bedienen. Orders lassen sich jederzeit stornieren, und nach Fristablauf kann sie jeder erstatten.
 
 Geprüft wird das mit 86 Szenario-Tests in Aiken, darunter Angriffe: ohne Bezahlung prägen, zu viel entnehmen, fremde Orders stornieren, Doppelauszahlung, Müll-Token im Markt. Dazu kommen Property-Tests der Auszahlungsmathematik über Zufallsmärkte.

@@ -29,6 +29,8 @@ export const REFERENCE_DEPOSIT = 2_000_000n;
 /** Lovelace an order carries for the return payment (refunded). */
 export const ORDER_DEPOSIT = 2_000_000n;
 export const DEFAULT_BATCHER_FEE = 400_000n;
+/** Opt-in side bet into the jackpot. */
+export const SIDE_BET = 1_000_000n;
 /** Width of validity windows. */
 const WINDOW_MS = 5 * 60_000;
 
@@ -175,20 +177,22 @@ export async function buildBetOrder(
   now: number,
   batcherFee = DEFAULT_BATCHER_FEE,
   opts: BuildOptions = {},
+  side = 0n,
 ): Promise<TxSignBuilder> {
   assertBettable(m, outcome, stake, now);
+  if (side !== 0n && side < SIDE_BET) throw new MarketError("bad_stake", "A side bet is at least 1 ADA");
   const owner = await lucid.wallet().address();
   const datum: OrderDatum = {
     owner,
     ownerKey: keyHashOf(owner),
     marketId: m.datum.marketId,
-    order: { kind: "bet", outcome, stake },
+    order: { kind: "bet", outcome, stake, side },
     batcherFee,
     deadline: m.datum.closeTime,
   };
   return lucid
     .newTx()
-    .pay.ToContract(c.orderAddress, { kind: "inline", value: encodeOrderDatum(datum) }, { lovelace: stake + batcherFee + ORDER_DEPOSIT })
+    .pay.ToContract(c.orderAddress, { kind: "inline", value: encodeOrderDatum(datum) }, { lovelace: stake + batcherFee + ORDER_DEPOSIT + side })
     .complete(completeWith(opts));
 }
 
@@ -296,19 +300,25 @@ export async function buildBatch(
       .collectFrom(bets.map((o) => o.utxo), OrderRedeemer.fill())
       .mintAssets(mint, MintRedeemer.mintOrBurn())
       .pay.ToContract(...continuing(c, m, { ...m.datum, pools }, lovelaceOf(m.utxo) + staked));
+    let sides = 0n;
     for (const o of bets) {
       if (o.datum.order.kind !== "bet") continue;
       const { outcome, stake } = o.datum.order;
+      const side = o.datum.order.side ?? 0n;
+      sides += side;
       tx = tx.pay.ToAddressWithData(
         o.datum.owner,
         { kind: "inline", value: outRefTag(o.utxo.txHash, o.utxo.outputIndex) },
         {
           ...withoutMarketTokens(c, o.utxo.assets, "__none__"),
-          lovelace: lovelaceOf(o.utxo) - stake - o.datum.batcherFee,
+          lovelace: lovelaceOf(o.utxo) - stake - o.datum.batcherFee - side,
           [unit(c.marketHash, positionName(id, outcome))]: stake,
         },
       );
     }
+    // Side bets go into the jackpot as one new output; the order validator
+    // checks that the jackpot grows by their sum.
+    if (sides > 0n) tx = tx.pay.ToAddress(c.jackpotAddress, { lovelace: sides });
     return tx.validTo(Math.min(now + WINDOW_MS, Number(m.datum.closeTime) - 1000)).complete(completeWith(opts));
   }
 

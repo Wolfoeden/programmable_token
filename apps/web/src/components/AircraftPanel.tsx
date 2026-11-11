@@ -126,7 +126,16 @@ export function AircraftPanel(p: AircraftPanelProps) {
         )}
 
         {sorted.map((m) => (
-          <MarketCard key={m.id} market={m} busy={p.busy} simple onPrepare={p.onPrepare} onConfirm={p.onConfirm} {...(p.onVoid ? { onVoid: p.onVoid } : {})} />
+          <MarketCard
+            key={m.id}
+            market={m}
+            busy={p.busy}
+            simple
+            onPrepare={p.onPrepare}
+            onConfirm={p.onConfirm}
+            onEngage={() => setSheet("full")}
+            {...(p.onVoid ? { onVoid: p.onVoid } : {})}
+          />
         ))}
         {!landingMarket &&
           (a?.airport && !tooClose ? (

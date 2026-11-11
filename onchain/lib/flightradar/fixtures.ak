@@ -64,6 +64,13 @@ pub fn market_address() -> Address {
   address.from_script(policy)
 }
 
+pub const jackpot_script: ByteArray =
+  #"0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
+
+pub fn jackpot_address() -> Address {
+  address.from_script(jackpot_script)
+}
+
 pub fn order_address() -> Address {
   address.from_script(order_script)
 }

@@ -49,6 +49,12 @@ export async function fetchOrders(lucid: LucidEvolution, c: Contracts): Promise<
   return out;
 }
 
+/** The jackpot: everything held at the jackpot script. */
+export async function fetchJackpot(lucid: LucidEvolution, c: Contracts): Promise<{ lovelace: bigint; outputs: number }> {
+  const utxos = await lucid.utxosAt(c.jackpotAddress);
+  return { lovelace: utxos.reduce((a, u) => a + (u.assets.lovelace ?? 0n), 0n), outputs: utxos.length };
+}
+
 export async function fetchReferenceNfts(lucid: LucidEvolution, c: Contracts, marketId: string): Promise<UTxO[]> {
   const utxos = await lucid.utxosAt(c.metadataAddress);
   return utxos.filter((u) => Object.keys(u.assets).some((k) => k.startsWith(c.marketHash) && k.includes(marketId)));

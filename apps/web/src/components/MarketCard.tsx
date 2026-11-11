@@ -26,10 +26,12 @@ export interface MarketCardProps {
   /** Question, two coloured buttons with the pool shares; details folded away. */
   simple?: boolean;
   busy?: boolean;
-  onPrepare: (market: MarketDto, outcome: number, stakeLovelace: bigint) => Promise<PreparedBet | null>;
+  onPrepare: (market: MarketDto, outcome: number, stakeLovelace: bigint, side?: boolean) => Promise<PreparedBet | null>;
   onConfirm: (bet: PreparedBet) => Promise<boolean>;
   /** Operator mode: void the market (refund everyone). */
   onVoid?: (market: MarketDto) => void;
+  /** Called when the user picks an outcome (e.g. to expand a bottom sheet). */
+  onEngage?: () => void;
 }
 
 function colorFor(m: MarketDto, i: number) {
@@ -58,7 +60,8 @@ function PhaseLine({ m, now }: { m: MarketDto; now: number }) {
 function Confirm({ bet, busy, onBack, onConfirm }: { bet: PreparedBet; busy?: boolean; onBack: () => void; onConfirm: () => void }) {
   const c = bet.costs;
   const now = useNow(1000);
-  const upfront = BigInt(c.stake) + BigInt(c.batcherFee) + BigInt(c.networkFee) + BigInt(c.deposit);
+  const side = BigInt(c.side ?? "0");
+  const upfront = BigInt(c.stake) + BigInt(c.batcherFee) + BigInt(c.networkFee) + BigInt(c.deposit) + side;
   const expired = c.closeTime - now < 60_000;
   return (
     <div className="confirm" role="region" aria-label="Confirm demo bet">
@@ -81,6 +84,12 @@ function Confirm({ bet, busy, onBack, onConfirm }: { bet: PreparedBet; busy?: bo
             <td>Deposit, returned with your tokens</td>
             <td>{ada(c.deposit)}</td>
           </tr>
+          {side > 0n && (
+            <tr>
+              <td>Side bet into the jackpot</td>
+              <td>{ada(side)}</td>
+            </tr>
+          )}
           <tr className="total">
             <td>Leaves your demo wallet now</td>
             <td>{ada(upfront)}</td>
@@ -105,10 +114,11 @@ function Confirm({ bet, busy, onBack, onConfirm }: { bet: PreparedBet; busy?: bo
   );
 }
 
-export function MarketCard({ market: m, highlight, simple, busy, onPrepare, onConfirm, onVoid }: MarketCardProps) {
+export function MarketCard({ market: m, highlight, simple, busy, onPrepare, onConfirm, onVoid, onEngage }: MarketCardProps) {
   const now = useNow(1000);
   const [outcome, setOutcome] = useState<number | null>(null);
   const [stakeAda, setStakeAda] = useState("10");
+  const [sideBet, setSideBet] = useState(false);
   const [prepared, setPrepared] = useState<PreparedBet | null>(null);
   // A market still being confirmed already takes bets (as orders the batcher books once it is on chain).
   const open = (m.phase === "open" || m.phase === "creating") && m.closeTime > now;
@@ -145,7 +155,10 @@ export function MarketCard({ market: m, highlight, simple, busy, onPrepare, onCo
               className={`outcome${outcome === i ? " selected" : ""}${won ? " winner" : ""}${simple ? ` side-${i}` : ""}`}
               title="Share of all stakes on this outcome (market-based, not a probability of the event)"
               disabled={!open || !!prepared}
-              onClick={() => setOutcome(i)}
+              onClick={() => {
+                setOutcome(i);
+                onEngage?.();
+              }}
             >
               <div className="bar" style={{ width: `${Math.max(2, p * 100)}%`, background: colorFor(m, i) }} />
               <span className="label" style={{ color: colorFor(m, i) }}>
@@ -171,11 +184,17 @@ export function MarketCard({ market: m, highlight, simple, busy, onPrepare, onCo
               type="button"
               className="btn primary"
               disabled={busy || stake < 1_000_000n}
-              onClick={async () => setPrepared(await onPrepare(m, outcome, stake))}
+              onClick={async () => setPrepared(await onPrepare(m, outcome, stake, sideBet))}
             >
               Review bet
             </button>
           </div>
+          <label className="side-bet">
+            <input type="checkbox" checked={sideBet} onChange={(e) => setSideBet(e.target.checked)} />
+            <span>
+              Side bet <strong>+1 ₳</strong> into the jackpot <span className="muted">(optional; the jackpot is shown in the menu)</span>
+            </span>
+          </label>
           <div className="chips">
             {PRESETS.map((v) => (
               <button key={v} type="button" className={`chip${stakeAda === String(v) ? " active" : ""}`} onClick={() => setStakeAda(String(v))}>

@@ -104,6 +104,8 @@ export interface BetCosts {
   networkFee: string;
   batcherFee: string;
   deposit: string;
+  /** Side bet into the jackpot, "0" when not opted in. */
+  side?: string;
   feeBps: string;
   closeTime: number;
 }

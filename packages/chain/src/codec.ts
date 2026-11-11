@@ -23,7 +23,8 @@ export interface MarketDatum {
   state: MarketState;
 }
 
-export type OrderKind = { kind: "bet"; outcome: number; stake: bigint } | { kind: "claim" };
+/** `side`: lovelace for the jackpot (opt-in side bet), 0 for none. */
+export type OrderKind = { kind: "bet"; outcome: number; stake: bigint; side?: bigint } | { kind: "claim" };
 
 export interface OrderDatum {
   owner: string;
@@ -179,7 +180,7 @@ export function dataToAddress(d: PData, network: Network): string {
 // ## Order datum
 
 export function encodeOrderDatum(o: OrderDatum): string {
-  const kind = o.order.kind === "bet" ? new Constr(0, [BigInt(o.order.outcome), o.order.stake]) : new Constr(1, []);
+  const kind = o.order.kind === "bet" ? new Constr(0, [BigInt(o.order.outcome), o.order.stake, o.order.side ?? 0n]) : new Constr(1, []);
   return Data.to(new Constr(0, [addressToData(o.owner), o.ownerKey, o.marketId, kind, o.batcherFee, o.deadline]));
 }
 
@@ -192,7 +193,12 @@ export function decodeOrderDatum(cbor: string, network: Network): OrderDatum {
     marketId: asBytes(field(c, 2, "market_id"), "market_id"),
     order:
       kind.index === 0
-        ? { kind: "bet", outcome: Number(asBigInt(field(kind, 0, "outcome"), "outcome")), stake: asBigInt(field(kind, 1, "stake"), "stake") }
+        ? {
+            kind: "bet",
+            outcome: Number(asBigInt(field(kind, 0, "outcome"), "outcome")),
+            stake: asBigInt(field(kind, 1, "stake"), "stake"),
+            ...(asBigInt(field(kind, 2, "side"), "side") > 0n ? { side: asBigInt(field(kind, 2, "side"), "side") } : {}),
+          }
         : { kind: "claim" },
     batcherFee: asBigInt(field(c, 4, "batcher_fee"), "batcher_fee"),
     deadline: asBigInt(field(c, 5, "deadline"), "deadline"),
@@ -209,6 +215,11 @@ export function outRefTag(txHash: string, outputIndex: number): string {
 export const MintRedeemer = {
   create: (txHash: string, outputIndex: number) => Data.to(new Constr(0, [new Constr(0, [txHash, BigInt(outputIndex)])])),
   mintOrBurn: () => Data.to(new Constr(1, [])),
+};
+
+export const JackpotRedeemer = {
+  deposit: () => Data.to(new Constr(0, [])),
+  payout: () => Data.to(new Constr(1, [])),
 };
 
 export const SpendRedeemer = {

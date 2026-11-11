@@ -16,6 +16,8 @@ export interface SiteMenuProps {
   /** Connected wallet is the operator wallet: deposits it can take back. */
   deposits?: { count: number; lovelace: string } | null;
   onWithdrawDeposits?: () => void;
+  /** Jackpot total in lovelace (side bets). */
+  jackpot?: string | null;
 }
 
 /**
@@ -82,6 +84,12 @@ export function SiteMenu(p: SiteMenuProps) {
               Leave operator mode
             </button>
           )}
+          <hr />
+          <div className="menu-jackpot" role="note">
+            <span>Jackpot</span>
+            <strong className="num">{p.jackpot ? `${(Number(p.jackpot) / 1e6).toLocaleString("en-US", { maximumFractionDigits: 2 })} ₳` : "–"}</strong>
+            <small>From opt-in side bets of 1 ₳. The winning rule is coming soon.</small>
+          </div>
           <hr />
           <button type="button" role="menuitem" onClick={pick(p.onAbout)}>
             How it works

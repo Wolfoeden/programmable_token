@@ -22,6 +22,8 @@ import {
   DEFAULT_BATCHER_FEE,
   ORDER_DEPOSIT,
   buildBurnWorthless,
+  fetchJackpot,
+  SIDE_BET,
   buildReclaimReferences,
   parseReferenceMarket,
   buildClaim,
@@ -359,8 +361,11 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
       outcome: z.number().int().min(0).max(7),
       stake: z.string().regex(/^\d+$/),
       mode: z.enum(["order", "direct"]).default("order"),
+      /** Opt-in side bet of 1 ADA into the jackpot (orders only). */
+      side: z.boolean().default(false),
     }).parse(req.body);
     const stake = BigInt(body.stake);
+    const side = body.side && body.mode === "order" ? SIDE_BET : 0n;
     if (stake < 1_000_000n) throw new HttpError(422, "stake_too_small", "Minimum stake is 1 ADA");
     const lucid = await walletLucid(body);
     // A market still being confirmed takes bets as orders straight away.
@@ -369,7 +374,7 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
     const tx =
       body.mode === "direct"
         ? await buildBet(lucid, s.ctx.contracts, m, body.outcome, stake, now())
-        : await buildBetOrder(lucid, s.ctx.contracts, m, body.outcome, stake, now());
+        : await buildBetOrder(lucid, s.ctx.contracts, m, body.outcome, stake, now(), DEFAULT_BATCHER_FEE, {}, side);
     const quote = parimutuel.quote(m.datum.pools, body.outcome, m.datum.feeBps, stake);
     const networkFee = BigInt(tx.toTransaction().body().fee());
     if (s.shadow) {
@@ -403,6 +408,7 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
         networkFee,
         batcherFee: body.mode === "direct" ? 0n : DEFAULT_BATCHER_FEE,
         deposit: body.mode === "direct" ? 0n : ORDER_DEPOSIT,
+        side,
         feeBps: m.datum.feeBps,
         closeTime: Number(m.datum.closeTime),
       },
@@ -422,6 +428,18 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
     const tokens: Assets = {};
     for (const [outcome, q] of positions) tokens[unit(s.ctx.contracts.marketHash, positionName(m.datum.marketId, outcome))] = q;
     return toJson({ tx: (await buildClaimOrder(lucid, s.ctx.contracts, m, tokens)).toCBOR(), value: claimValue(m.datum, positions) });
+  });
+
+  // ## Jackpot (side bets)
+
+  let jackpotCache: { at: number; value: { lovelace: string; outputs: number } } | null = null;
+  /** The jackpot total. Cached for 20 s (chain queries are rationed). */
+  app.get("/api/jackpot", async () => {
+    if (!jackpotCache || Date.now() - jackpotCache.at > 20_000) {
+      const j = await fetchJackpot(s.ctx.operator.lucid, s.ctx.contracts);
+      jackpotCache = { at: Date.now(), value: { lovelace: j.lovelace.toString(), outputs: j.outputs } };
+    }
+    return { ...jackpotCache.value, address: s.ctx.contracts.jackpotAddress, sideBet: SIDE_BET.toString() };
   });
 
   // ## Operator: reference-NFT deposits of decided markets

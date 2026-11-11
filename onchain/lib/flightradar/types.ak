@@ -68,7 +68,10 @@ pub type MarketSpendRedeemer {
 pub type OrderKind {
   /// Stake `stake` lovelace on `outcome` and send the minted position
   /// tokens back to the owner.
-  BetOrder { outcome: Int, stake: Int }
+  ///
+  /// `side` lovelace (0 or more) go into the jackpot when the order is
+  /// filled: an opt-in side bet.
+  BetOrder { outcome: Int, stake: Int, side: Int }
   /// Burn all position tokens held by the order and send the payout back.
   ClaimOrder
 }
@@ -95,4 +98,13 @@ pub type OrderRedeemer {
   Fill
   /// Anyone returns an expired order to its owner.
   Refund
+}
+
+/// Redeemer of the jackpot validator.
+pub type JackpotRedeemer {
+  /// Anyone: spend the jackpot and put it back, never smaller.
+  Deposit
+  /// Operator only: pay out the jackpot. The winning rule is not defined
+  /// yet; until then the operator decides.
+  Payout
 }

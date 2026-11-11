@@ -74,6 +74,7 @@ function remembered(): string | null {
 
 export function App() {
   const { data: health } = usePoll(api.health, 30_000, []);
+  const { data: jackpot } = usePoll(api.jackpot, 60_000, []);
   const markets = usePoll(api.markets, 5000, []);
   const marketList = markets.data?.markets ?? [];
   const [selection, setSelection] = useState<Selection>(null);
@@ -269,14 +270,14 @@ export function App() {
   };
 
   /** Build the bet so the user sees the real costs before signing. */
-  const onPrepare = async (m: MarketDto, outcome: number, stake: bigint): Promise<PreparedBet | null> => {
+  const onPrepare = async (m: MarketDto, outcome: number, stake: bigint, side = false): Promise<PreparedBet | null> => {
     if (!wallet) {
       setWalletDialog(true);
       return null;
     }
     setBusy(true);
     try {
-      const res = await api.betTx(await wallet.payload(), m.id, outcome, stake);
+      const res = await api.betTx(await wallet.payload(), m.id, outcome, stake, side);
       return { market: m, outcome, tx: res.tx, costs: res.costs, payout: res.quote.payout, multiplier: res.quote.multiplier };
     } catch (e) {
       toast("error", errorText(e));
@@ -415,6 +416,7 @@ export function App() {
           onAbout={() => setAbout(true)}
           operator={!!operator}
           deposits={deposits}
+          jackpot={jackpot?.lovelace ?? null}
           onWithdrawDeposits={onWithdrawDeposits}
           onLeaveOperator={() => {
             store(ADMIN_KEY, null);

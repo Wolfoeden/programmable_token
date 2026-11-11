@@ -8,8 +8,9 @@
 
 use aiken/collection/list
 use aiken/interval
-use cardano/address.{Address}
+use cardano/address.{Address, Script}
 use cardano/assets.{Assets, PolicyId}
+use aiken/crypto.{ScriptHash}
 use cardano/transaction.{
   InlineDatum, Input, NoDatum, Output, OutputReference, Transaction,
 }
@@ -22,7 +23,7 @@ use flightradar/types.{
   Refund, Resolved,
 }
 
-validator order(market_policy: PolicyId) {
+validator order(market_policy: PolicyId, jackpot: ScriptHash) {
   spend(
     datum: Option<OrderDatum>,
     redeemer: OrderRedeemer,
@@ -32,7 +33,7 @@ validator order(market_policy: PolicyId) {
     expect Some(request) = datum
     when redeemer is {
       Cancel -> checks.signed_by(self, request.owner_key)
-      Fill -> fill(market_policy, request, own_ref, self)
+      Fill -> fill(market_policy, jackpot, request, own_ref, self)
       Refund -> refund(request, own_ref, self)
     }
   }
@@ -55,8 +56,59 @@ fn payment_to_owner(
   output
 }
 
+/// Side bets of all bet orders filled in this transaction must reach the
+/// jackpot: what the jackpot script holds afterwards minus what it held
+/// before is at least their sum.
+fn jackpot_paid(self: Transaction, own_ref: OutputReference, jackpot: ScriptHash) -> Bool {
+  expect Some(own_input) = transaction.find_input(self.inputs, own_ref)
+  let own_cred = own_input.output.address.payment_credential
+  let sides =
+    list.foldl(
+      self.inputs,
+      0,
+      fn(input: Input, acc) {
+        if input.output.address.payment_credential == own_cred {
+          expect InlineDatum(data) = input.output.datum
+          expect d: OrderDatum = data
+          when d.kind is {
+            BetOrder { side, .. } -> acc + side
+            ClaimOrder -> acc
+          }
+        } else {
+          acc
+        }
+      },
+    )
+  let held_before =
+    list.foldl(
+      self.inputs,
+      0,
+      fn(input: Input, acc) {
+        if input.output.address.payment_credential == Script(jackpot) {
+          acc + assets.lovelace_of(input.output.value)
+        } else {
+          acc
+        }
+      },
+    )
+  let held_after =
+    list.foldl(
+      self.outputs,
+      0,
+      fn(output: Output, acc) {
+        if output.address.payment_credential == Script(jackpot) {
+          acc + assets.lovelace_of(output.value)
+        } else {
+          acc
+        }
+      },
+    )
+  held_after - held_before >= sides
+}
+
 fn fill(
   market_policy: PolicyId,
+  jackpot: ScriptHash,
   request: OrderDatum,
   own_ref: OutputReference,
   self: Transaction,
@@ -65,15 +117,17 @@ fn fill(
   let in_value = own_input.output.value
   let output = payment_to_owner(self, own_ref, request.owner)
   when request.kind is {
-    BetOrder { outcome, stake } -> {
+    BetOrder { outcome, stake, side } -> {
       let token = tokens.position_token(request.market_id, outcome)
       let required =
         assets.without_lovelace(in_value)
           |> assets.add(market_policy, token, stake)
       and {
         stake > 0,
+        side >= 0,
         checks.contains_tokens(output.value, required),
-        assets.lovelace_of(output.value) >= assets.lovelace_of(in_value) - stake - request.batcher_fee,
+        assets.lovelace_of(output.value) >= assets.lovelace_of(in_value) - stake - request.batcher_fee - side,
+        side == 0 || jackpot_paid(self, own_ref, jackpot),
       }
     }
     ClaimOrder -> {
@@ -133,7 +187,7 @@ const fee: Int = 300_000
 const stake: Int = 5_000_000
 
 fn bet_order(owner: ByteArray) -> OrderDatum {
-  fx.order_datum(owner, BetOrder { outcome: 1, stake })
+  fx.order_datum(owner, BetOrder { outcome: 1, stake, side: 0 })
 }
 
 fn bet_order_input(n: Int, owner: ByteArray) -> Input {
@@ -146,7 +200,7 @@ fn check(
   own: OutputReference,
   t: Transaction,
 ) -> Bool {
-  order.spend(fx.policy, Some(d), r, own, t)
+  order.spend(fx.policy, fx.jackpot_script, Some(d), r, own, t)
 }
 
 fn fill_bet_tx(orders: List<Input>, payments: List<Output>, staked: Int) {
@@ -497,4 +551,76 @@ test fill_claim_returning_foreign_tokens_ok() {
         |> assets.add(fx.order_script, "souvenir", 1),
     )
   check(claim_order(), Fill, fx.ref(5), t)
+}
+
+// ## Side bets
+
+const side: Int = 1_000_000
+
+fn side_order(owner: ByteArray) -> OrderDatum {
+  fx.order_datum(owner, BetOrder { outcome: 1, stake, side })
+}
+
+fn side_order_input(n: Int, owner: ByteArray) -> Input {
+  fx.order_input(n, assets.from_lovelace(stake + fee + deposit + side), side_order(owner))
+}
+
+fn jackpot_out(lovelace: Int) -> Output {
+  Output { address: fx.jackpot_address(), value: assets.from_lovelace(lovelace), datum: NoDatum, reference_script: None }
+}
+
+fn jackpot_in(lovelace: Int) -> Input {
+  Input { output_reference: fx.ref(9), output: jackpot_out(lovelace) }
+}
+
+test side_bet_paid_into_new_jackpot_ok() {
+  let t =
+    fill_bet_tx(
+      [side_order_input(5, fx.alice)],
+      [fx.order_payment(fx.alice, fx.ref(5), tokens_back(deposit, 1, stake)), jackpot_out(side)],
+      stake,
+    )
+  check(side_order(fx.alice), Fill, fx.ref(5), t)
+}
+
+test side_bet_paid_into_existing_jackpot_ok() {
+  let t =
+    fill_bet_tx(
+      [jackpot_in(40_000_000), side_order_input(5, fx.alice)],
+      [fx.order_payment(fx.alice, fx.ref(5), tokens_back(deposit, 1, stake)), jackpot_out(40_000_000 + side)],
+      stake,
+    )
+  check(side_order(fx.alice), Fill, fx.ref(5), t)
+}
+
+test side_bet_kept_by_batcher_fails() fail {
+  let t =
+    fill_bet_tx(
+      [side_order_input(5, fx.alice)],
+      [fx.order_payment(fx.alice, fx.ref(5), tokens_back(deposit, 1, stake)), fx.wallet_output(fx.mallory, assets.from_lovelace(side))],
+      stake,
+    )
+  check(side_order(fx.alice), Fill, fx.ref(5), t)
+}
+
+test two_side_bets_need_both_in_jackpot() fail {
+  // Two side bets, but the jackpot grows by one only.
+  let t =
+    fill_bet_tx(
+      [side_order_input(5, fx.alice), side_order_input(6, fx.bob)],
+      [
+        fx.order_payment(fx.alice, fx.ref(5), tokens_back(deposit, 1, stake)),
+        fx.order_payment(fx.bob, fx.ref(6), tokens_back(deposit, 1, stake)),
+        jackpot_out(side),
+      ],
+      2 * stake,
+    )
+  check(side_order(fx.alice), Fill, fx.ref(5), t)
+}
+
+test side_bet_refunded_to_owner_on_cancel_ok() {
+  // Cancel returns everything, side bet included: only the owner signs.
+  let t =
+    fx.tx([side_order_input(5, fx.alice)], [fx.wallet_output(fx.alice, assets.from_lovelace(stake + fee + deposit + side))], assets.zero, fx.before(fx.close_time), [fx.alice])
+  check(side_order(fx.alice), Cancel, fx.ref(5), t)
 }

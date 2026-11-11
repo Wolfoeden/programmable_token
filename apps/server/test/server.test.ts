@@ -71,9 +71,9 @@ async function block() {
   await index.refresh();
 }
 
-async function betAs(wallet: string, outcome: number, ada: number) {
+async function betAs(wallet: string, outcome: number, ada: number, side = false) {
   const w = await call<{ address: string; utxos: string[] }>("GET", `/api/demo/wallets/${wallet}/utxos`);
-  const { tx } = await call<{ tx: string }>("POST", "/api/tx/bet", { ...w, marketId, outcome, stake: String(ada * 1_000_000) });
+  const { tx } = await call<{ tx: string }>("POST", "/api/tx/bet", { ...w, marketId, outcome, stake: String(ada * 1_000_000), side });
   const { witness } = await call<{ witness: string }>("POST", `/api/demo/wallets/${wallet}/sign`, { tx });
   return call<{ txHash: string }>("POST", "/api/tx/submit", { tx, witness });
 }
@@ -147,7 +147,7 @@ describe("server pipeline (emulator, fake flight data)", () => {
   });
 
   it("takes bets through the API and batches them", async () => {
-    await betAs("alice", 0, 10);
+    await betAs("alice", 0, 10, true); // with a 1 ADA side bet
     await betAs("bob", 1, 4);
     await block();
     await batcher.tick(index.live, index.orders);
@@ -155,6 +155,8 @@ describe("server pipeline (emulator, fake flight data)", () => {
     const { market } = await call<{ market: { pools: string[]; pending: { orders: number } } }>("GET", `/api/markets/${marketId}`);
     expect(market.pending.orders).toBe(0);
     expect(market.pools.reduce((a, b) => a + BigInt(b), 0n)).toBe(34_000_000n);
+    // The side bet went into the jackpot, not into the pool.
+    expect(await call("GET", "/api/jackpot")).toMatchObject({ lovelace: "1000000" });
     // Both bets are in the shadow log, built and submitted, with a hashed wallet.
     const file = shadow.files().find((f) => f.name.startsWith("bets-"))!;
     const recs = shadow.read(file.name)!.trim().split("\n").map((l) => JSON.parse(l));

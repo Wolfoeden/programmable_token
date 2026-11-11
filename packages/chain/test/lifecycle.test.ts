@@ -4,6 +4,9 @@ import {
   buildBatch,
   buildBet,
   buildBetOrder,
+  fetchJackpot,
+  JackpotRedeemer,
+  SIDE_BET,
   buildCancelOrder,
   buildClaim,
   buildClaimOrder,
@@ -246,4 +249,65 @@ describe("force void when the oracle disappears", () => {
     await submit(await buildClaim(world.alice.lucid, world.contracts, voided, positions), world.emulator);
     expect(lovelaceOf((await get()).utxo)).toBe(4n * ADA + MARKET_BUFFER);
   });
+});
+
+describe("side bets and the jackpot", () => {
+  let world: World;
+  let id: string;
+  const get = async () => (await fetchMarkets(world.alice.lucid, world.contracts)).find((m) => m.datum.marketId === id)!;
+  beforeAll(async () => {
+    world = await makeWorld();
+    const now = world.emulator.now();
+    const created = await buildCreateMarket(world.operator.lucid, world.contracts, {
+      question: landingQuestion(now + 2 * HOUR),
+      pools: [2n * ADA, 2n * ADA],
+      closeTime: now + HOUR,
+      resolveDeadline: now + 3 * HOUR,
+      claimDeadline: now + 3 * HOUR + 31 * DAY,
+      feeBps: 300n,
+      maxTotal: 1_000n * ADA,
+      metadata: metadata(2),
+      now,
+    });
+    id = created.marketId;
+    await submit(created.tx, world.emulator);
+  });
+
+  it("a side bet goes into the jackpot when the order is batched", async () => {
+    const before = (await fetchJackpot(world.batcher.lucid, world.contracts)).lovelace;
+    const m = await get();
+    await submit(await buildBetOrder(world.alice.lucid, world.contracts, m, 0, 1n * ADA, world.emulator.now(), undefined, {}, SIDE_BET), world.emulator);
+    const orders = await fetchOrders(world.batcher.lucid, world.contracts);
+    expect(orders[0]?.datum.order).toMatchObject({ kind: "bet", side: SIDE_BET });
+    await submit(await buildBatch(world.batcher.lucid, world.contracts, await get(), orders, world.emulator.now()), world.emulator);
+    expect((await fetchJackpot(world.batcher.lucid, world.contracts)).lovelace - before).toBe(SIDE_BET);
+    expect((await get()).datum.pools).toEqual([3n * ADA, 2n * ADA]);
+  });
+
+  it("only the operator can pay out the jackpot", async () => {
+    const pot = await world.alice.lucid.utxosAt(world.contracts.jackpotAddress);
+    const steal = world.mallory.lucid
+      .newTx()
+      .collectFrom(pot, JackpotRedeemer.payout())
+      .attach.SpendingValidator(world.contracts.jackpot)
+      .complete();
+    await expect(steal).rejects.toThrow();
+    // Spending it to add to it is fine for anyone; shrinking it is not.
+    const total = pot.reduce((a, u) => a + lovelaceOf(u), 0n);
+    const shrink = world.mallory.lucid
+      .newTx()
+      .collectFrom(pot, JackpotRedeemer.deposit())
+      .attach.SpendingValidator(world.contracts.jackpot)
+      .pay.ToAddress(world.contracts.jackpotAddress, { lovelace: total - 1n })
+      .complete();
+    await expect(shrink).rejects.toThrow();
+    const payout = await world.operator.lucid
+      .newTx()
+      .collectFrom(pot, JackpotRedeemer.payout())
+      .attach.SpendingValidator(world.contracts.jackpot)
+      .addSigner(await world.operator.lucid.wallet().address())
+      .complete();
+    expect(payout).toBeTruthy();
+  });
+
 });

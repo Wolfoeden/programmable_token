@@ -16,6 +16,7 @@ export class ChainIndex {
   markets: MarketView[] = [];
   orders: OrderView[] = [];
   updatedAt = 0;
+  private fastUntil = 0;
   private lastSeen = new Map<string, { view: MarketView; seenAt: number }>();
   private staleIds = new Set<string>();
   private refreshing: Promise<void> | null = null;
@@ -52,6 +53,25 @@ export class ChainIndex {
       }
     })();
     return this.refreshing;
+  }
+
+  /**
+   * Chain queries are rationed (the public Koios tier allows 5,000 a day):
+   * every 60 s when nothing is going on, every 8 s while something is in
+   * flight (orders waiting, a market being confirmed, a recent submission).
+   */
+  hurry(ms = 3 * 60_000): void {
+    this.fastUntil = Math.max(this.fastUntil, Date.now() + ms);
+  }
+
+  private busy(): boolean {
+    return Date.now() < this.fastUntil || this.orders.length > 0 || this.staleIds.size > 0;
+  }
+
+  /** Refresh if due; call often. */
+  async maybeRefresh(): Promise<void> {
+    const every = this.busy() ? 8_000 : 60_000;
+    if (Date.now() - this.updatedAt >= every) await this.refresh();
   }
 
   /** Markets whose current UTxO is known to be confirmed. */

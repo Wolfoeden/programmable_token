@@ -25,6 +25,10 @@ services:
       # Optional; without it the server uses Koios.
       - key: BLOCKFROST_PROJECT_ID
         sync: false
+      # Optional free Koios token (koios.rest): 50,000 instead of 5,000
+      # chain queries a day. Not needed with Blockfrost.
+      - key: KOIOS_TOKEN
+        sync: false
       # Shadow log: follow listed flights even without viewers, and allow
       # downloading the log (npm run shadow:report -- <url> <token>).
       - key: SHADOW_ALWAYS_ON

@@ -105,7 +105,7 @@ export async function createChain(cfg: Config): Promise<ChainContext> {
     provider = new Blockfrost(url, cfg.BLOCKFROST_PROJECT_ID);
   } else {
     const url = cfg.KOIOS_URL ?? (network === "Mainnet" ? "https://api.koios.rest/api/v1" : `https://${network.toLowerCase()}.koios.rest/api/v1`);
-    provider = new Koios(url);
+    provider = cfg.KOIOS_TOKEN ? new Koios(url, cfg.KOIOS_TOKEN) : new Koios(url);
   }
   const seed = cfg.OPERATOR_SEED!;
   const operatorLucid = await Lucid(provider, network);

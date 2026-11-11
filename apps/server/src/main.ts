@@ -54,15 +54,15 @@ async function main() {
     };
     setTimeout(run, everyMs).unref();
   };
-  loop("index", 5000, () => index.refresh());
+  loop("index", 4000, () => index.maybeRefresh());
   loop("traffic", 1500, () => traffic.step());
   loop("tracker", 10_000, () => tracker.poll());
   loop("tracker-final", 2000, () => tracker.pollFinal());
   loop("oracle", 15_000, () => oracle.tick(index.live));
   loop("batcher", 10_000, () => batcher.tick(index.live, index.orders));
   loop("sweeper", 10 * 60_000, () => oracle.sweep(index.live));
-  loop("seed-reclaim", 60_000, () => oracle.reclaimSeeds(index.live, (id) => index.isStale(id)));
-  if (!cfg.DEMO) loop("operator-split", 5 * 60_000, () => keepOperatorSplit(ctx.operator));
+  loop("seed-reclaim", 2 * 60_000, () => oracle.reclaimSeeds(index.live, (id) => index.isStale(id)));
+  if (!cfg.DEMO) loop("operator-split", 30 * 60_000, () => keepOperatorSplit(ctx.operator));
 
   const shutdown = async () => {
     store.flush();

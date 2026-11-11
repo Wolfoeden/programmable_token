@@ -245,6 +245,7 @@ export class MarketMaker {
     };
     this.store.putMeta(meta);
     this.creating.set(marketId, meta);
+    this.index.hurry();
     if (datum) this.creatingViews.set(marketId, { utxo: { txHash, outputIndex: 0, address: this.ctx.contracts.marketAddress, assets: {} }, datum });
     for (const f of flightsOf(q)) this.tracker.watch(f, proposal.resolveDeadline);
     log.info("market created", { marketId, kind: q.kind, txHash, probabilities: proposal.probabilities.map((p) => p.toFixed(3)) });

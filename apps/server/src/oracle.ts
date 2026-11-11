@@ -19,6 +19,8 @@ export class Oracle {
   private inflight = new Map<string, number>();
   /** Seed claims submitted, until the chain shows them. */
   private reclaiming = new Map<string, number>();
+  /** Decided markets where the operator holds no positions any more. */
+  private reclaimed = new Set<string>();
   private scheduleCache = new TtlCache<Promise<{ cancelled: boolean; departed: boolean } | null>>(5 * 60_000);
 
   constructor(
@@ -50,14 +52,20 @@ export class Oracle {
    */
   async reclaimSeeds(markets: MarketView[], isStale: (id: string) => boolean = () => false): Promise<void> {
     for (const [id, until] of this.reclaiming) if (until < Date.now()) this.reclaiming.delete(id);
-    const decided = markets.filter((m) => m.datum.state.kind === "resolved" && !isStale(m.datum.marketId) && !this.reclaiming.has(m.datum.marketId));
+    const decided = markets.filter(
+      (m) => m.datum.state.kind === "resolved" && !isStale(m.datum.marketId) && !this.reclaiming.has(m.datum.marketId) && !this.reclaimed.has(m.datum.marketId),
+    );
+    // Nothing new to settle: no chain query (queries are rationed).
     if (decided.length === 0) return;
     const held = await this.ctx.operator.availableUtxos();
     const assets: Record<string, bigint> = {};
     for (const u of held) for (const [k, v] of Object.entries(u.assets)) if (k !== "lovelace") assets[k] = (assets[k] ?? 0n) + v;
     for (const m of decided) {
       const all = positionsIn(this.ctx.contracts, assets, m.datum.marketId);
-      if (all.size === 0) continue;
+      if (all.size === 0) {
+        this.reclaimed.add(m.datum.marketId);
+        continue;
+      }
       // The claim burns every position of the market, losers included; with
       // nothing to pay, the worthless tokens are just burnt.
       const pays = claimValue(m.datum, all) > 0n;

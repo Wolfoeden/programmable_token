@@ -82,6 +82,10 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
     if (err instanceof HttpError) return reply.status(err.status).send({ error: err.code, message: err.message });
     if (err instanceof MarketError) return reply.status(422).send({ error: err.code, message: err.message });
     if (err instanceof z.ZodError) return reply.status(400).send({ error: "bad_request", message: err.issues.map((i) => i.message).join("; ") });
+    const text = err instanceof Error ? err.message : String(err);
+    if (/Exceeded Tier Limit|\b429\b|rate limit/i.test(text)) {
+      return reply.status(503).send({ error: "chain_busy", message: "The blockchain data service is over its request limit right now. Please try again later." });
+    }
     const message = err instanceof Error ? err.message : String(err);
     return reply.status(500).send({ error: "internal", message: message.slice(0, 500) });
   });
@@ -298,7 +302,9 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
    * cannot exist on this server's chain, with a message saying why, instead
    * of failing later at submission ("UTxO does not exist").
    */
-  const walletLucid = async (body: z.infer<typeof WalletBody>) => {
+  // Wallet coins already checked against the chain recently (saves queries).
+  const knownCoins = new Map<string, { at: number; refs: Set<string> }>();
+  const walletLucid = async (body: z.infer<typeof WalletBody>, opts: { verify?: boolean } = {}) => {
     const addr = bech32(body.address);
     if (s.cfg.DEMO) {
       if (!s.ctx.demoWallets.some((d) => d.account.address === addr)) {
@@ -314,8 +320,19 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
     if (mainnetAddr !== (s.ctx.network === "Mainnet")) {
       throw new HttpError(409, "wrong_network", `Your wallet is on ${mainnetAddr ? "Mainnet" : "a testnet"}, this site runs on ${s.ctx.network}.`);
     }
+    if (opts.verify === false) return s.ctx.userLucid(addr, body.utxos);
     // Preview and Preprod addresses look the same: check that the coins exist here.
-    const known = new Set((await s.ctx.provider.getUtxos(addr)).map((u) => `${u.txHash}#${u.outputIndex}`));
+    let cached = knownCoins.get(addr);
+    const wanted = body.utxos.map((c) => {
+      const u = decodeUtxo(c);
+      return `${u.txHash}#${u.outputIndex}`;
+    });
+    if (!cached || Date.now() - cached.at > 60_000 || wanted.some((r) => !cached!.refs.has(r))) {
+      cached = { at: Date.now(), refs: new Set((await s.ctx.provider.getUtxos(addr)).map((u) => `${u.txHash}#${u.outputIndex}`)) };
+      knownCoins.set(addr, cached);
+      if (knownCoins.size > 500) knownCoins.delete(knownCoins.keys().next().value!);
+    }
+    const known = cached.refs;
     const mine = body.utxos.filter((cbor) => {
       const u = decodeUtxo(cbor);
       return known.has(`${u.txHash}#${u.outputIndex}`);
@@ -485,6 +502,7 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
       throw e;
     });
     s.shadow?.submitted(txHash);
+    s.index.hurry();
     setTimeout(() => void s.index.refresh(), 1500);
     return { txHash };
   });
@@ -492,7 +510,8 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
   /** Positions and open orders of a wallet. */
   app.post("/api/portfolio", async (req) => {
     const body = WalletBody.parse(req.body);
-    const lucid = await walletLucid(body);
+    // Read-only: the wallet's own coin list is enough, no chain check.
+    const lucid = await walletLucid(body, { verify: false });
     const utxos = await lucid.wallet().getUtxos();
     const holdings: Assets = {};
     for (const u of utxos) for (const [k, v] of Object.entries(u.assets)) holdings[k] = (holdings[k] ?? 0n) + v;

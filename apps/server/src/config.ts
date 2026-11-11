@@ -18,6 +18,8 @@ const Env = z.object({
   BLOCKFROST_PROJECT_ID: z.string().optional(),
   BLOCKFROST_URL: z.string().optional(),
   KOIOS_URL: z.string().optional(),
+  /** Free Koios API token (koios.rest): 50,000 instead of 5,000 requests a day. */
+  KOIOS_TOKEN: z.string().optional(),
   /** 24-word mnemonic of the operator wallet (creates, seeds and resolves markets). */
   OPERATOR_SEED: z.string().optional(),
   PUBLIC_URL: z.string().default("https://flightradar.fun"),

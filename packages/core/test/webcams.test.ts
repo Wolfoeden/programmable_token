@@ -35,7 +35,8 @@ describe("live-stream airports", () => {
     expect(isWithinRange("WSSS", "EGLL")).toBe(false); // Singapore
     expect(isWithinRange("LPPT", "LPMA")).toBe(true); // Lisbon, ~970 km
     expect(isWithinRange("LEMD", "EGLL")).toBe(true); // Madrid, ~1,250 km, about 2 h
-    expect(isWithinRange("LGAV", "EGLL")).toBe(false); // Athens, ~2,400 km, over 3 h
+    expect(isWithinRange("LGAV", "EGLL")).toBe(true); // Athens, ~2,400 km, about 3.5 h
+    expect(isWithinRange("OMDB", "EGLL")).toBe(false); // Dubai, ~5,500 km, over 5 h
     expect(isWithinRange("EGLL", "EGLL")).toBe(false);
   });
 

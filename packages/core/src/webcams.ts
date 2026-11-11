@@ -43,11 +43,11 @@ export const MOVEMENT_RADIUS_NM = 250;
 export type Movement = "landing";
 
 /**
- * Route limit: flights of up to about three hours. The departure airport
- * must be within 2,200 km of the live-stream airport (great circle; about
- * 2 h 45 min at ~800 km/h cruise plus climb and descent).
+ * Route limit: flights of up to about five hours. The departure airport
+ * must be within 3,800 km of the live-stream airport (great circle; about
+ * 4 h 45 min at ~800 km/h cruise plus climb and descent).
  */
-export const MAX_ROUTE_KM = 2200;
+export const MAX_ROUTE_KM = 3800;
 
 /**
  * Route data can be wrong for today: airlines reuse a flight number for
@@ -100,7 +100,7 @@ export function onRoute(ac: { lat: number; lon: number; trackDeg?: number }, ori
   return true;
 }
 
-/** Is the route at most about three hours of flying? */
+/** Is the route at most about five hours of flying? */
 export function isWithinRange(origin: string | undefined, destination: string | undefined): boolean {
   const o = airportByIcao(origin);
   const d = airportByIcao(destination);

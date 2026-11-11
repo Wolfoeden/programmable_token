@@ -169,7 +169,7 @@ export class CamTraffic {
       const phase: Movement = "landing";
       // Geometry alone also catches traffic for neighbouring airports
       // (London has six). Keep only flights whose route ends here.
-      // Only flights of up to about three hours (departure within 2,200 km).
+      // Only flights of up to about five hours (departure within 3,800 km).
       let origin: string | undefined;
       let flightNumber: string | undefined;
       if (this.routes) {

@@ -104,7 +104,7 @@ function Terms() {
         <li>In demo mode, balances and positions are lost when the server restarts. The server may be unavailable at times.</li>
         <li>Predictions close at least 20 minutes before the estimated landing. Bets are logged to evaluate the model (see Privacy).</li>
         <li>
-          Only flights of up to about three hours (departure airport within 2,200 km) that land within the next hour at one of these airports can get a prediction:{" "}
+          Only flights of up to about five hours (departure airport within 3,800 km) that land within the next hour at one of these airports can get a prediction:{" "}
           {WEBCAMS.map((w) => w.name).join(", ")}.
         </li>
         <li>The exact settlement rules of each prediction are under “Rules &amp; settlement” on its card.</li>

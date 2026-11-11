@@ -122,7 +122,7 @@ export class MarketMaker {
     if (!ac.callsign) throw new HttpError(422, "no_callsign", "No callsign received");
     const route = await this.routes.lookup(ac.callsign);
     if (!route) throw new HttpError(422, "unknown_route", "Route unknown");
-    // Only flights of up to about three hours into a live-stream airport, landing within the hour, are bettable.
+    // Only flights of up to about five hours into a live-stream airport, landing within the hour, are bettable.
     const dest = airportByIcao(route.destination);
     if (!webcamFor(route.destination) || !dest || !isWithinRange(route.origin, route.destination) || !onRoute(ac, route.origin, route.destination) || !landingWithinHour(ac, dest, this.ctx.now())) {
       throw new HttpError(422, "not_eligible", "Markets are only offered on short flights landing at a live-stream airport within the next hour");

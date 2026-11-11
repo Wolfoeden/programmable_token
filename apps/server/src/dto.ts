@@ -144,7 +144,7 @@ export interface AircraftDto {
 export function aircraftDto(
   a: Aircraft,
   marketCount: number,
-  movement?: { phase: "landing" | "takeoff"; airport: string; origin?: string; flightNumber?: string; etaMs?: number; etaSigmaMs?: number },
+  movement?: { phase: "landing" | "takeoff"; airport: string; origin?: string; flightNumber?: string; etaMs?: number; etaSigmaMs?: number; confirmed?: boolean },
 ): AircraftDto {
   const { squawk: _s, category: _c, ...rest } = a;
   return { ...rest, ...(marketCount > 0 ? { markets: marketCount } : {}), ...(movement ?? {}) };

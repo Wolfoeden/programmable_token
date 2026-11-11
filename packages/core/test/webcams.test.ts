@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { airportByIcao, bearingDeg, classifyMovement, isWithinRange, onRoute, destinationPoint, landingWithinHour, WEBCAMS, webcamAirports, webcamFor, type Aircraft } from "../src/index.js";
+import { airportByIcao, bearingDeg, classifyMovement, inboundAtCruise, isWithinRange, onRoute, destinationPoint, landingWithinHour, WEBCAMS, webcamAirports, webcamFor, type Aircraft } from "../src/index.js";
 
 const LHR = airportByIcao("EGLL")!;
 const at = (km: number, bearing: number, o: Partial<Aircraft>): Aircraft => {
@@ -63,5 +63,23 @@ describe("live-stream airports", () => {
     // Too early to tell: Phoenix fits the position as well.
     for (const km of [50, 150]) expect(onRoute(toLas(km), "KOAK", "KLAS")).toBe(false);
     for (const km of [300, 450, 600]) expect(onRoute(toLas(km), "KOAK", "KLAS")).toBe(true);
+  });
+});
+
+describe("inbound at cruise", () => {
+  const MAD = airportByIcao("LEMD")!;
+  const cruise = (km: number, o: Partial<Aircraft> = {}): Aircraft => {
+    const p = destinationPoint(MAD, bearingDeg(MAD, LHR), km);
+    return { hex: "aaaaaa", callsign: "IBE3166", lat: p.lat, lon: p.lon, altitudeFt: 37000, onGround: false, groundSpeedKt: 460, trackDeg: bearingDeg(p, LHR), verticalRateFpm: 0, timestamp: 0, ...o };
+  };
+  it("shows a flight at cruise hours before landing", () => {
+    const eta = inboundAtCruise(cruise(200), LHR)!;
+    expect(eta.remainingMin).toBeGreaterThan(60);
+    expect(eta.remainingMin).toBeLessThan(330);
+  });
+  it("not while climbing, below cruise or heading elsewhere", () => {
+    expect(inboundAtCruise(cruise(150, { verticalRateFpm: 2000, altitudeFt: 25000 }), LHR)).toBeNull();
+    expect(inboundAtCruise(cruise(150, { altitudeFt: 12000 }), LHR)).toBeNull();
+    expect(inboundAtCruise(cruise(400, { trackDeg: 90 }), LHR)).toBeNull();
   });
 });

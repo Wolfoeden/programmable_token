@@ -46,6 +46,8 @@ export interface AircraftDto {
   phase?: "landing" | "takeoff";
   airport?: string;
   origin?: string;
+  /** Destination confirmed (unambiguous); only confirmed flights take predictions. */
+  confirmed?: boolean;
   flightNumber?: string;
   /** Model estimate of touchdown, unix ms (UTC), and one standard deviation. */
   etaMs?: number;

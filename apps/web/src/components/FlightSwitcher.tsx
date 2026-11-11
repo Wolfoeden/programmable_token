@@ -1,4 +1,5 @@
 import { bothZones } from "../format";
+import { betLabel, type BetState } from "../betState";
 import type { AircraftDto, DataStatus } from "../types";
 
 export interface FlightSwitcherProps {
@@ -9,8 +10,8 @@ export interface FlightSwitcherProps {
   notice: string | null;
   /** The selected flight is no longer listed: its name and what is known. */
   held?: { name: string; text: string } | null;
-  /** Whether a flight still takes predictions. */
-  isOpen?: (a: AircraftDto) => boolean;
+  /** Whether a flight takes predictions now, soon, or no more. */
+  stateOf?: (a: AircraftDto) => BetState;
 }
 
 /**
@@ -19,10 +20,10 @@ export interface FlightSwitcherProps {
  * current flight, with arrows to the previous and next flight landing soon
  * (sorted by arrival).
  */
-export function FlightSwitcher({ flights, selectedHex, status, onSelect, notice, held, isOpen }: FlightSwitcherProps) {
+export function FlightSwitcher({ flights, selectedHex, status, onSelect, notice, held, stateOf }: FlightSwitcherProps) {
   const idx = flights.findIndex((f) => f.hex === selectedHex);
   const cur = idx >= 0 ? flights[idx] : undefined;
-  const target = cur ?? flights.find((f) => isOpen?.(f)) ?? flights[0];
+  const target = cur ?? flights.find((f) => stateOf?.(f).kind === "open") ?? flights[0];
   const step = (d: number) => {
     if (flights.length === 0) return;
     const next = idx < 0 ? (d > 0 ? 0 : flights.length - 1) : (idx + d + flights.length) % flights.length;
@@ -39,7 +40,8 @@ export function FlightSwitcher({ flights, selectedHex, status, onSelect, notice,
     message = "Flight data may be out of date.";
   }
   const warn = status === "error" || status === "unavailable";
-  const open = target && isOpen ? isOpen(target) : undefined;
+  const state = target && stateOf ? stateOf(target) : undefined;
+  const open = state?.kind === "open";
 
   const prev = (
     <button type="button" className="icon-btn" onClick={() => step(-1)} aria-label="Previous flight" disabled={flights.length === 0 || (flights.length === 1 && idx === 0)}>
@@ -51,7 +53,11 @@ export function FlightSwitcher({ flights, selectedHex, status, onSelect, notice,
       ›
     </button>
   );
-  const tag = (a: AircraftDto) => isOpen && <span className={`bet-tag${isOpen(a) ? " open" : ""}`}>{isOpen(a) ? "betting open" : "betting closed"}</span>;
+  const tag = (a: AircraftDto) => {
+    if (!stateOf) return null;
+    const s = stateOf(a);
+    return <span className={`bet-tag ${s.kind}`}>{betLabel(s)}</span>;
+  };
   const status_ = (message || held || notice) && (
     <div className={`switcher-msg${warn ? " warn" : ""}`} role="status">
       {held?.text ?? message ?? notice}
@@ -109,7 +115,7 @@ export function FlightSwitcher({ flights, selectedHex, status, onSelect, notice,
         {target && (
           <div className="switcher-what num">
             <strong>{target.flightNumber || target.callsign}</strong> → {target.airport}
-            {open !== undefined && <span className={`bet-tag${open ? " open" : ""}`}>{open ? "open" : "closed"}</span>}
+            {state && <span className={`bet-tag ${state.kind}`}>{betLabel(state, true)}</span>}
           </div>
         )}
       </div>

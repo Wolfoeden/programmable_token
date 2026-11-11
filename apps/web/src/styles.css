@@ -1256,6 +1256,11 @@ details.rules summary {
   border: 1px solid var(--border-strong);
 }
 
+.bet-tag.soon {
+  color: var(--info);
+  border-color: rgba(90, 169, 255, 0.45);
+}
+
 .bet-tag.open {
   color: var(--yes);
   border-color: rgba(61, 220, 151, 0.5);

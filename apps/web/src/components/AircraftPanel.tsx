@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { CLOSE_LEAD_MIN, estimateEta } from "@flightradar/core/eta";
 import { distanceKm } from "@flightradar/core/geo";
 import { webcamFor } from "@flightradar/core/webcams";
+import { OPENS_BEFORE_MIN } from "../betState";
 import { useNow } from "../hooks";
 import { t } from "../i18n";
 import type { AircraftDetail, AircraftDto, MarketDto } from "../types";
@@ -68,6 +69,9 @@ export function AircraftPanel(p: AircraftPanelProps) {
   const hasCam = !!webcamFor(destIcao);
   // A new market needs its close (ETA − 20 min) at least 5 minutes ahead.
   const tooClose = !!etaMs && etaMs - now < (CLOSE_LEAD_MIN + 5) * 60_000;
+  // Far flights are shown from cruise altitude; betting opens an hour before landing.
+  const opensInMin = etaMs ? Math.ceil((etaMs - now) / 60_000 - OPENS_BEFORE_MIN) : 0;
+  const unconfirmed = a?.confirmed === false;
 
   return (
     <aside className={`panel simple sheet-${sheet}`} aria-label="Flight">
@@ -119,6 +123,10 @@ export function AircraftPanel(p: AircraftPanelProps) {
           )}
         </div>
 
+        {unconfirmed && (
+          <div className="pool-note">Destination from route data, not confirmed yet: another airport in a similar direction is still possible.</div>
+        )}
+
         {p.arrivalNote && (
           <div className="watch-state held" role="status">
             {p.arrivalNote}
@@ -138,7 +146,11 @@ export function AircraftPanel(p: AircraftPanelProps) {
           />
         ))}
         {!landingMarket &&
-          (a?.airport && !tooClose ? (
+          (a?.airport && opensInMin > 0 ? (
+            <div className="closed-box">
+              <div>Betting opens about an hour before landing, in about {opensInMin} min.</div>
+            </div>
+          ) : a?.airport && !tooClose && !unconfirmed ? (
             <button type="button" className="btn primary" disabled={p.busy} onClick={() => p.onCreate({ kind: "landing_before", hex: p.hex })}>
               Predict this landing
             </button>

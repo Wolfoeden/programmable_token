@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { WEBCAMS as webcams, webcamFor } from "@flightradar/core/webcams";
 import { CLOSE_LEAD_MIN } from "@flightradar/core/eta";
 import { api } from "./api";
+import { betState } from "./betState";
 import { AboutDialog } from "./components/AboutDialog";
 import { AircraftPanel } from "./components/AircraftPanel";
 import { AirportPanel } from "./components/AirportPanel";
@@ -48,7 +49,7 @@ function bettableFlights(list: AircraftDto[]): AircraftDto[] {
 }
 
 /** Still takes a new prediction: closes 20 min before landing, needs 5 min of betting. */
-const bettable = (a: AircraftDto, now: number) => !!a.etaMs && a.etaMs - now >= (CLOSE_LEAD_MIN + 5) * 60_000;
+const bettable = (a: AircraftDto, now: number) => betState(a, now).kind === "open";
 
 const pageFromHash = (): InfoPage | null => {
   const h = window.location.hash.replace("#", "");
@@ -389,7 +390,7 @@ export function App() {
           flights={flights}
           status={data.status}
           selectedHex={selectedHex}
-          isOpen={(a) => bettable(a, now) || !!a.markets}
+          stateOf={(a) => betState(a, now)}
           onSelect={(a) => (setNotice(null), selectFlight(a))}
           markets={marketList}
           onOpenMarket={(m) => {
@@ -438,7 +439,7 @@ export function App() {
           notice={notice}
           held={held}
           onSelect={(a) => (setNotice(null), selectFlight(a))}
-          isOpen={(a) => bettable(a, now) || !!a.markets}
+          stateOf={(a) => betState(a, now)}
         />
 
 

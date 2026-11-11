@@ -86,3 +86,28 @@ describe("CamTraffic shadow log", () => {
     expect(rec.airport).toBe("EGLL");
   });
 });
+
+describe("CamTraffic far flights", () => {
+  it("discovers a flight at cruise far away and follows it by hex", async () => {
+    const MAD = airportByIcao("LEMD")!;
+    const p = destinationPoint(MAD, 20, 300);
+    let plane: Aircraft = { hex: "f00001", callsign: "IBE3166", lat: p.lat, lon: p.lon, altitudeFt: 37000, onGround: false, groundSpeedKt: 460, trackDeg: 0, verticalRateFpm: 0, timestamp: Date.now() };
+    plane = { ...plane, trackDeg: Math.round((Math.atan2(EGLL.lon - plane.lon, EGLL.lat - plane.lat) * 180) / Math.PI + 360) % 360 };
+    const hexCalls: string[][] = [];
+    const adsb: AdsbSource = {
+      area: async () => [plane],
+      byHex: async (h: string[]) => (hexCalls.push(h), [{ ...plane, timestamp: Date.now() }]),
+      track: async () => [],
+      byCallsign: async () => [],
+    };
+    const t = new CamTraffic(adsb);
+    t.touch();
+    await t.stepFar(); // discovery tile
+    const listed = t.list().find((x) => x.aircraft.hex === "f00001");
+    expect(listed?.airport).toBe("EGLL");
+    expect(listed!.etaMs - Date.now()).toBeGreaterThan(60 * 60_000);
+    await t.stepFar(); // refresh by hex
+    expect(hexCalls).toEqual([["f00001"]]);
+    expect(t.list().some((x) => x.aircraft.hex === "f00001")).toBe(true);
+  });
+});

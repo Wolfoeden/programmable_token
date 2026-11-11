@@ -67,6 +67,7 @@ async function main() {
   };
   loop("index", 4000, () => index.maybeRefresh());
   loop("traffic", 1500, () => traffic.step());
+  loop("traffic-far", 1500, () => traffic.stepFar());
   loop("tracker", 10_000, () => tracker.poll());
   loop("tracker-final", 2000, () => tracker.pollFinal());
   loop("oracle", 15_000, () => oracle.tick(index.live));

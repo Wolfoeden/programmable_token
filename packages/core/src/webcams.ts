@@ -37,6 +37,12 @@ export function webcamAirports(): Airport[] {
 /** Only flights landing within this many minutes are shown and bettable. */
 export const MAX_MINUTES_TO_LANDING = 60;
 
+/** Flights are shown from cruise altitude, up to this long before landing. */
+export const MAX_MINUTES_SHOWN = 330;
+
+/** "At cruise": at least this high and not climbing. */
+export const CRUISE_MIN_FT = 20_000;
+
 /** Query radius around a live-stream airport (about one hour at cruise). */
 export const MOVEMENT_RADIUS_NM = 250;
 
@@ -78,6 +84,13 @@ function fitsLeg(ac: { lat: number; lon: number; trackDeg?: number }, o: Airport
 
 /** Alternatives closer than this to the destination are not told apart (the oracle voids a landing there). */
 const AMBIGUITY_MIN_SEPARATION_KM = 80;
+
+/** Geometry only: the aircraft lies on the leg and heads for the destination (no ambiguity check). */
+export function onLeg(ac: { lat: number; lon: number; trackDeg?: number }, origin: string | undefined, destination: string | undefined): boolean {
+  const o = airportByIcao(origin);
+  const d = airportByIcao(destination);
+  return !!o && !!d && fitsLeg(ac, o, d);
+}
 
 export function onRoute(ac: { lat: number; lon: number; trackDeg?: number }, origin: string | undefined, destination: string | undefined): boolean {
   const o = airportByIcao(origin);
@@ -125,6 +138,23 @@ export function landingWithinHour(ac: Aircraft, airport: Airport, now = ac.times
   if (!aligned || !onProfile || vr > 300) return null;
   const eta = estimateEta(ac, airport, now);
   if (!eta || eta.remainingMin > MAX_MINUTES_TO_LANDING) return null;
+  return eta;
+}
+
+/**
+ * Inbound to the airport and worth showing: within the last hour by the
+ * descent-aware test above; further out once the aircraft is at cruise
+ * (high, not climbing) and heading for the airport (±25°), up to
+ * MAX_MINUTES_SHOWN before landing.
+ */
+export function inboundAtCruise(ac: Aircraft, airport: Airport, now = ac.timestamp): EtaEstimate | null {
+  const near = landingWithinHour(ac, airport, now);
+  if (near) return near;
+  if (ac.onGround || ac.altitudeFt === undefined || ac.trackDeg === undefined) return null;
+  if (ac.altitudeFt < CRUISE_MIN_FT || (ac.verticalRateFpm ?? 0) > 500) return null;
+  if (headingDelta(ac.trackDeg, bearingDeg(ac, airport)) > 25) return null;
+  const eta = estimateEta(ac, airport, now);
+  if (!eta || eta.remainingMin > MAX_MINUTES_SHOWN) return null;
   return eta;
 }
 

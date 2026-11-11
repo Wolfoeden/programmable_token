@@ -4,7 +4,20 @@
  * slow round-robin, shared by all clients, and paused while nobody is
  * watching. This keeps upstream calls, CPU and payload small and constant.
  */
-import { destinationPoint, distanceKm, isWithinRange, landingWithinHour, onRoute, MOVEMENT_RADIUS_NM, webcamAirports, type Aircraft, type Airport, type Movement } from "@flightradar/core";
+import {
+  destinationPoint,
+  distanceKm,
+  inboundAtCruise,
+  isWithinRange,
+  MAX_ROUTE_KM,
+  MOVEMENT_RADIUS_NM,
+  onLeg,
+  onRoute,
+  webcamAirports,
+  type Aircraft,
+  type Airport,
+  type Movement,
+} from "@flightradar/core";
 import type { AdsbSource } from "./adsb.js";
 import type { RouteSource } from "./routes.js";
 import type { ShadowFlight, ShadowSample } from "./shadow.js";
@@ -20,6 +33,12 @@ export interface Shown {
   /** Estimated touchdown (model, unix ms) and one standard deviation. */
   etaMs: number;
   etaSigmaMs: number;
+  /**
+   * The destination is unambiguous (the position fits no leg to another
+   * large airport). Only confirmed flights can get a market; unconfirmed
+   * ones are shown with a note.
+   */
+  confirmed: boolean;
 }
 
 /**
@@ -78,6 +97,30 @@ const STALE_AFTER_MS = 3 * 60_000;
 const RING_KM = 380;
 const RING_BEARINGS = [0, 90, 180, 270];
 
+/**
+ * Beyond the airport rings, a sweep over tiles (one 250 nm query each)
+ * out to the route limit discovers flights at cruise; once found, they
+ * are followed by hex in batches of 40.
+ */
+const FAR_STEP_KM = 760;
+const FAR_MIN_KM = 1000;
+const FAR_MERGE_KM = 500;
+const FAR_KEEP_MS = 5 * 60_000;
+
+function farTiles(airports: Airport[]): Array<{ lat: number; lon: number }> {
+  const tiles: Array<{ lat: number; lon: number }> = [];
+  for (const a of airports) {
+    for (let r = FAR_MIN_KM; r <= MAX_ROUTE_KM + 200; r += FAR_STEP_KM) {
+      const n = Math.max(6, Math.ceil((2 * Math.PI * r) / FAR_STEP_KM));
+      for (let i = 0; i < n; i++) {
+        const p = destinationPoint(a, (360 * i) / n, r);
+        if (!tiles.some((t) => distanceKm(t, p) < FAR_MERGE_KM)) tiles.push(p);
+      }
+    }
+  }
+  return tiles;
+}
+
 interface Slot {
   airport: Airport;
   /** 0 = the airport itself, 1..4 = ring points. */
@@ -92,6 +135,10 @@ export class CamTraffic {
     { airport: a, k: 0, lat: a.lat, lon: a.lon },
     ...RING_BEARINGS.map((b, i) => ({ airport: a, k: i + 1, ...destinationPoint(a, b, RING_KM) })),
   ]);
+  private tiles = farTiles(this.airports);
+  private far = new Map<string, { shown: Shown; at: number }>();
+  private farNext = 0;
+
   /** Steps until every query point (airports and ring points) has been asked once. */
   get slotsPerRound(): number {
     return 2 * Math.max(this.airports.length, this.slots.length - this.airports.length);
@@ -160,33 +207,10 @@ export class CamTraffic {
     } catch {
       failed = true;
     }
-    // Only flights landing at this airport within the hour are shown.
     const shown: Shown[] = [];
     for (const ac of list) {
-      if (!ac.callsign) continue;
-      const eta = landingWithinHour(ac, airport);
-      if (!eta) continue;
-      const phase: Movement = "landing";
-      // Geometry alone also catches traffic for neighbouring airports
-      // (London has six). Keep only flights whose route ends here.
-      // Only flights of up to about five hours (departure within 3,800 km).
-      let origin: string | undefined;
-      let flightNumber: string | undefined;
-      if (this.routes) {
-        const route = await this.routes.lookup(ac.callsign);
-        if (route?.destination !== airport.icao || !isWithinRange(route.origin, airport.icao) || !onRoute(ac, route.origin, airport.icao)) continue;
-        origin = route.origin;
-        if (route.flightNumber) flightNumber = route.flightNumber;
-      }
-      shown.push({
-        aircraft: ac,
-        phase,
-        airport: airport.icao,
-        etaMs: eta.etaMs,
-        etaSigmaMs: eta.sigmaMs,
-        ...(origin ? { origin } : {}),
-        ...(flightNumber ? { flightNumber } : {}),
-      });
+      const x = await this.evaluate(ac, airport);
+      if (x) shown.push(x);
     }
     // An empty answer is usually an upstream hiccup: keep the last list.
     // A failed request keeps the previous list; it ages out after 3 minutes.
@@ -198,6 +222,84 @@ export class CamTraffic {
       if (slot.k === 0) this.follow(airport, this.list().filter((x) => x.airport === airport.icao), list);
     }
     this.refreshed.add(`${airport.icao}#${slot.k}`);
+  }
+
+  /**
+   * Is this aircraft inbound to the airport and worth showing? From cruise
+   * altitude on, with the route data saying it lands here, on its leg, and
+   * a departure airport within the route limit.
+   */
+  private async evaluate(ac: Aircraft, airport: Airport): Promise<Shown | null> {
+    if (!ac.callsign) return null;
+    const eta = inboundAtCruise(ac, airport);
+    if (!eta) return null;
+    let origin: string | undefined;
+    let flightNumber: string | undefined;
+    let confirmed = true;
+    if (this.routes) {
+      const route = await this.routes.lookup(ac.callsign);
+      if (route?.destination !== airport.icao || !isWithinRange(route.origin, airport.icao) || !onLeg(ac, route.origin, airport.icao)) return null;
+      origin = route.origin;
+      if (route.flightNumber) flightNumber = route.flightNumber;
+      confirmed = onRoute(ac, route.origin, airport.icao);
+    }
+    return {
+      aircraft: ac,
+      phase: "landing",
+      airport: airport.icao,
+      etaMs: eta.etaMs,
+      etaSigmaMs: eta.sigmaMs,
+      confirmed,
+      ...(origin ? { origin } : {}),
+      ...(flightNumber ? { flightNumber } : {}),
+    };
+  }
+
+  /**
+   * Far flights. Call every 1.5 s or so: alternately one discovery tile and
+   * one batch of up to 40 known far flights (by hex).
+   */
+  async stepFar(): Promise<void> {
+    if (!this.active || this.tiles.length === 0) return;
+    const n = this.farNext++;
+    const now = Date.now();
+    for (const [hex, e] of this.far) if (now - e.at > FAR_KEEP_MS) this.far.delete(hex);
+    if (n % 2 === 1 && this.far.size > 0) {
+      const batch = [...this.far.entries()].sort((x, y) => x[1].at - y[1].at).slice(0, 40);
+      let found: Aircraft[] = [];
+      try {
+        found = await this.adsb.byHex(batch.map(([hex]) => hex));
+      } catch {
+        return;
+      }
+      for (const ac of found) {
+        const prev = this.far.get(ac.hex);
+        const airport = prev && this.airports.find((a) => a.icao === prev.shown.airport);
+        if (!airport) continue;
+        const x = await this.evaluate(ac, airport);
+        if (x) this.far.set(ac.hex, { shown: x, at: Date.now() });
+        else this.far.delete(ac.hex);
+      }
+      return;
+    }
+    const tile = this.tiles[(n >> 1) % this.tiles.length]!;
+    let list: Aircraft[] = [];
+    try {
+      list = this.adsb.areaStrict ? await this.adsb.areaStrict(tile.lat, tile.lon, MOVEMENT_RADIUS_NM) : await this.adsb.area(tile.lat, tile.lon, MOVEMENT_RADIUS_NM);
+    } catch {
+      return;
+    }
+    for (const ac of list) {
+      if (this.far.has(ac.hex)) continue;
+      for (const airport of this.airports) {
+        if (distanceKm(ac, airport) > MAX_ROUTE_KM + 300) continue;
+        const x = await this.evaluate(ac, airport);
+        if (x) {
+          this.far.set(ac.hex, { shown: x, at: Date.now() });
+          break;
+        }
+      }
+    }
   }
 
   /** Update arrivals at this airport from one fresh answer. */
@@ -333,6 +435,7 @@ export class CamTraffic {
   list(): Shown[] {
     const out = new Map<string, Shown>();
     const now = Date.now();
+    for (const { shown, at } of this.far.values()) if (now - at <= FAR_KEEP_MS) out.set(shown.aircraft.hex, shown);
     for (const { at, list } of this.perAirport.values()) {
       if (now - at > STALE_AFTER_MS) continue;
       for (const s of list) {

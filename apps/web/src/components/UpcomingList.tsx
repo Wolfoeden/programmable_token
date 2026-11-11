@@ -2,13 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { airportByIcao } from "@flightradar/core/airports";
 import { ada, countdown, utcClock } from "../format";
 import { useNow } from "../hooks";
+import { betLabel, type BetState } from "../betState";
 import type { AircraftDto, DataStatus, MarketDto } from "../types";
 
 export interface UpcomingListProps {
   flights: AircraftDto[];
   status: DataStatus;
   selectedHex: string | null;
-  isOpen: (a: AircraftDto) => boolean;
+  stateOf: (a: AircraftDto) => BetState;
   onSelect: (a: AircraftDto) => void;
   /** All prediction pools, for the Pools tab. */
   markets: MarketDto[];
@@ -64,8 +65,8 @@ export function UpcomingList(p: UpcomingListProps) {
   const pools = [...p.markets].sort(
     (a, b) => (ORDER[a.phase] ?? 3) - (ORDER[b.phase] ?? 3) || (a.phase === "resolved" || a.phase === "void" ? b.closeTime - a.closeTime : a.closeTime - b.closeTime),
   );
-  // Only flights that still take a bet; closed ones drop out of the list.
-  const openFlights = p.flights.filter((f) => p.isOpen(f));
+  // Flights open for betting or opening later; closed ones drop out of the list.
+  const openFlights = p.flights.filter((f) => p.stateOf(f).kind !== "closed");
   const openPools = p.markets.filter((m) => (m.phase === "open" || m.phase === "creating") && m.closeTime > now).length;
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -120,17 +121,17 @@ export function UpcomingList(p: UpcomingListProps) {
               <div className="upcoming-foot">Percentages are each side’s share of the pool (market-based, not a probability).</div>
             </>
           )}
-          {tab === "flights" && <div className="upcoming-head">Open for betting · landing within the hour</div>}
+          {tab === "flights" && <div className="upcoming-head">Open or opening soon · from cruise altitude</div>}
           {tab === "flights" && openFlights.length === 0 && (
             <div className="upcoming-empty">
-              {p.status === "loading" ? "Loading flights …" : p.status === "ok" ? "No flight is open for betting right now." : "Flight data is not reachable right now."}
+              {p.status === "loading" ? "Loading flights …" : p.status === "ok" ? "No flight is open or opening soon right now." : "Flight data is not reachable right now."}
             </div>
           )}
           {tab === "flights" && (
           <ul>
             {openFlights.map((f) => {
               const min = f.etaMs ? Math.max(0, Math.round((f.etaMs - now) / 60_000)) : null;
-              const betOpen = p.isOpen(f);
+              const bs = p.stateOf(f);
               return (
                 <li key={f.hex}>
                   <button
@@ -151,14 +152,14 @@ export function UpcomingList(p: UpcomingListProps) {
                       {f.etaMs ? utcClock(f.etaMs) : "–"}
                       <span className="muted">{min !== null ? (min < 1 ? "now" : `in ${min} min`) : ""}</span>
                     </span>
-                    <span className={`bet-tag${betOpen ? " open" : ""}`}>{betOpen ? "open" : "closed"}</span>
+                    <span className={`bet-tag ${bs.kind}`}>{betLabel(bs, true)}</span>
                   </button>
                 </li>
               );
             })}
           </ul>
           )}
-          {tab === "flights" && <div className="upcoming-foot">Arrival times are estimates from position and speed. Betting closes 20 min before landing.</div>}
+          {tab === "flights" && <div className="upcoming-foot">Arrival times are estimates from position and speed. Betting opens 60 min and closes 20 min before landing.</div>}
         </div>
       )}
     </div>

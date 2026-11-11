@@ -1482,6 +1482,95 @@ details.rules summary {
   overflow: hidden;
 }
 
+.up-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 8px 4px;
+}
+
+.up-tabs button {
+  flex: 1;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.up-tabs button.active {
+  background: var(--surface-3);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.upcoming .count.open {
+  color: var(--yes);
+}
+
+.pool-row {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 8px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pool-row:hover {
+  background: var(--surface-3);
+}
+
+.pool-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pool-status {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.pool-status.open,
+.pool-status.creating {
+  color: var(--accent);
+}
+
+.pool-status.resolved {
+  color: var(--yes);
+}
+
+.pool-split {
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--surface-3);
+}
+
+.pool-yes {
+  background: #1f9d63;
+}
+
+.pool-no {
+  background: #d9474a;
+}
+
+.pool-nums {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
 .upcoming-head {
   padding: 10px 14px 6px;
   font-size: 11px;

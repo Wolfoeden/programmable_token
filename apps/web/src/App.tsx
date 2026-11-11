@@ -354,7 +354,20 @@ export function App() {
 
       <header className="topbar">
         <span className="spacer" />
-        <UpcomingList flights={flights} status={data.status} selectedHex={selectedHex} isOpen={(a) => bettable(a, now) || !!a.markets} onSelect={(a) => (setNotice(null), selectFlight(a))} />
+        <UpcomingList
+          flights={flights}
+          status={data.status}
+          selectedHex={selectedHex}
+          isOpen={(a) => bettable(a, now) || !!a.markets}
+          onSelect={(a) => (setNotice(null), selectFlight(a))}
+          markets={marketList}
+          onOpenMarket={(m) => {
+            // A live flight opens its flight panel; otherwise the market card alone.
+            const live = aircraftRef.current.find((a) => m.icao24.includes(a.hex));
+            if (live) selectFlight(live);
+            else setSelection({ kind: "market", id: m.id });
+          }}
+        />
         {!wallet && (
           <button type="button" className="btn primary" onClick={() => setWalletDialog(true)} title={health && !health.demo ? `Only ${health.network} wallets can connect right now` : undefined}>
             <span className="label-wide">Connect</span>Wallet

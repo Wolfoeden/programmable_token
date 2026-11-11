@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { airportByIcao } from "@flightradar/core/airports";
-import { utcClock } from "../format";
+import { ada, countdown, utcClock } from "../format";
 import { useNow } from "../hooks";
-import type { AircraftDto, DataStatus } from "../types";
+import type { AircraftDto, DataStatus, MarketDto } from "../types";
 
 export interface UpcomingListProps {
   flights: AircraftDto[];
@@ -10,6 +10,44 @@ export interface UpcomingListProps {
   selectedHex: string | null;
   isOpen: (a: AircraftDto) => boolean;
   onSelect: (a: AircraftDto) => void;
+  /** All prediction pools, for the Pools tab. */
+  markets: MarketDto[];
+  onOpenMarket: (m: MarketDto) => void;
+}
+
+const ORDER: Record<string, number> = { creating: 0, open: 0, closed: 1, resolved: 2, void: 2 };
+
+function PoolRow({ m, now, onOpen }: { m: MarketDto; now: number; onOpen: () => void }) {
+  const yes = m.probabilities[0] ?? 0;
+  const status =
+    m.phase === "open" || m.phase === "creating"
+      ? m.closeTime > now
+        ? `Open · closes in ${countdown(m.closeTime - now)}`
+        : "Betting closed"
+      : m.phase === "closed"
+        ? "Betting closed · waiting for the landing"
+        : m.phase === "void"
+          ? "Void · stakes refunded 1:1"
+          : `Result: ${m.labels.en[m.winner ?? 0] ?? "?"}`;
+  return (
+    <button type="button" className="pool-row" onClick={onOpen}>
+      <span className="pool-title">{m.title.en}</span>
+      <span className={`pool-status ${m.phase}`}>{status}</span>
+      <span className="pool-split" aria-hidden>
+        <span style={{ width: `${yes * 100}%` }} className="pool-yes" />
+        <span style={{ width: `${(1 - yes) * 100}%` }} className="pool-no" />
+      </span>
+      <span className="pool-nums num">
+        <span>
+          {m.labels.en[0]} {Math.round(yes * 100)} %
+        </span>
+        <span>Pool {ada(m.total, 0)}</span>
+        <span>
+          {m.labels.en[1]} {Math.round((1 - yes) * 100)} %
+        </span>
+      </span>
+    </button>
+  );
 }
 
 const iata = (icao?: string) => (icao ? airportByIcao(icao)?.iata || icao : "–");
@@ -21,7 +59,12 @@ const iata = (icao?: string) => (icao ? airportByIcao(icao)?.iata || icao : "–
  */
 export function UpcomingList(p: UpcomingListProps) {
   const [open, setOpen] = useState(false);
-  const now = useNow(15_000);
+  const [tab, setTab] = useState<"flights" | "pools">("flights");
+  const now = useNow(tab === "pools" ? 1000 : 15_000);
+  const pools = [...p.markets].sort(
+    (a, b) => (ORDER[a.phase] ?? 3) - (ORDER[b.phase] ?? 3) || (a.phase === "resolved" || a.phase === "void" ? b.closeTime - a.closeTime : a.closeTime - b.closeTime),
+  );
+  const openPools = p.markets.filter((m) => (m.phase === "open" || m.phase === "creating") && m.closeTime > now).length;
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -43,15 +86,45 @@ export function UpcomingList(p: UpcomingListProps) {
           ✈
         </span>
         <span className="count num">{p.flights.length}</span>
+        {openPools > 0 && <span className="count open num">{openPools} open</span>}
       </button>
       {open && (
         <div className="upcoming-list" role="dialog" aria-label="Live flights">
-          <div className="upcoming-head">Live flights · landing within the hour</div>
-          {p.flights.length === 0 && (
+          <div className="up-tabs" role="tablist">
+            <button type="button" role="tab" aria-selected={tab === "flights"} className={tab === "flights" ? "active" : ""} onClick={() => setTab("flights")}>
+              Live flights <span className="num">{p.flights.length}</span>
+            </button>
+            <button type="button" role="tab" aria-selected={tab === "pools"} className={tab === "pools" ? "active" : ""} onClick={() => setTab("pools")}>
+              Pools <span className="num">{p.markets.length}</span>
+            </button>
+          </div>
+          {tab === "pools" && (
+            <>
+              {pools.length === 0 && <div className="upcoming-empty">No pools yet. Open a flight and press “Predict this landing”.</div>}
+              <ul>
+                {pools.map((m) => (
+                  <li key={m.id}>
+                    <PoolRow
+                      m={m}
+                      now={now}
+                      onOpen={() => {
+                        setOpen(false);
+                        p.onOpenMarket(m);
+                      }}
+                    />
+                  </li>
+                ))}
+              </ul>
+              <div className="upcoming-foot">Percentages are each side’s share of the pool (market-based, not a probability).</div>
+            </>
+          )}
+          {tab === "flights" && <div className="upcoming-head">Landing within the hour</div>}
+          {tab === "flights" && p.flights.length === 0 && (
             <div className="upcoming-empty">
               {p.status === "loading" ? "Loading flights …" : p.status === "ok" ? "No flight is landing at a live-stream airport within the hour." : "Flight data is not reachable right now."}
             </div>
           )}
+          {tab === "flights" && (
           <ul>
             {p.flights.map((f) => {
               const min = f.etaMs ? Math.max(0, Math.round((f.etaMs - now) / 60_000)) : null;
@@ -82,7 +155,8 @@ export function UpcomingList(p: UpcomingListProps) {
               );
             })}
           </ul>
-          <div className="upcoming-foot">Arrival times are estimates from position and speed. Betting closes 20 min before landing.</div>
+          )}
+          {tab === "flights" && <div className="upcoming-foot">Arrival times are estimates from position and speed. Betting closes 20 min before landing.</div>}
         </div>
       )}
     </div>

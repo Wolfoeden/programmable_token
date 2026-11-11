@@ -68,6 +68,9 @@ export const api = {
       stake: stake.toString(),
     }),
   claimTx: (w: WalletPayload, marketId: string) => post<{ tx: string; value: string }>("/api/tx/claim", { ...w, marketId }),
+  operatorDeposits: (address: string) =>
+    request<{ isOperator: boolean; count: number; lovelace: string }>(`/api/operator/deposits?address=${encodeURIComponent(address)}`),
+  reclaimDepositsTx: (w: WalletPayload) => post<{ tx: string; count: number; lovelace: string }>("/api/tx/reclaim-deposits", w),
   burnTx: (w: WalletPayload) => post<{ tx: string; burned: number }>("/api/tx/burn", w),
   cancelTx: (w: WalletPayload, order: string) => post<{ tx: string }>("/api/tx/cancel", { ...w, order }),
   submit: (tx: string, witness: string) => post<{ txHash: string }>("/api/tx/submit", { tx, witness }),

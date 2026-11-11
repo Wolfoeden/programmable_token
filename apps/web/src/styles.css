@@ -1418,6 +1418,12 @@ details.rules summary {
   background: var(--surface-3);
 }
 
+.menu-list > button:disabled {
+  color: var(--text-3);
+  cursor: default;
+  background: none;
+}
+
 .menu-list hr {
   width: 100%;
   border: 0;

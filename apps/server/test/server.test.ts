@@ -13,7 +13,7 @@ import { airportByIcao, bearingDeg, destinationPoint, type Aircraft } from "@fli
 import type { AdsbSource } from "../src/adsb.js";
 import { buildApi } from "../src/api.js";
 import { Batcher } from "../src/batcher.js";
-import { createChain, type ChainContext } from "../src/chain.js";
+import { createChain, encodeUtxo, type ChainContext } from "../src/chain.js";
 import { ChainIndex } from "../src/chainIndex.js";
 import { loadConfig } from "../src/config.js";
 import { MarketMaker } from "../src/marketMaker.js";
@@ -221,6 +221,20 @@ describe("server pipeline (emulator, fake flight data)", () => {
     await call("POST", "/api/tx/submit", { tx: burn.tx, witness: sig.witness });
     await block();
     expect(await bobTickets()).toBe(0);
+
+    // Operator only: take back the reference-NFT deposits of the decided market.
+    const alice = await call<{ address: string; utxos: string[] }>("GET", "/api/demo/wallets/alice/utxos");
+    expect(await call("GET", `/api/operator/deposits?address=${alice.address}`)).toMatchObject({ isOperator: false });
+    expect((await app.inject({ method: "POST", url: "/api/tx/reclaim-deposits", payload: alice })).statusCode).toBe(403);
+    const opAddr = ctx.operator.address;
+    const dep = await call<{ isOperator: boolean; count: number; lovelace: string }>("GET", `/api/operator/deposits?address=${opAddr}`);
+    expect(dep).toMatchObject({ isOperator: true, count: 2 });
+    const opUtxos = (await ctx.operator.lucid.wallet().getUtxos()).map(encodeUtxo);
+    const rec = await call<{ tx: string; count: number }>("POST", "/api/tx/reclaim-deposits", { address: opAddr, utxos: opUtxos });
+    const signed = await ctx.operator.lucid.fromTx(rec.tx).sign.withWallet().complete();
+    await signed.submit();
+    await block();
+    expect(await call("GET", `/api/operator/deposits?address=${opAddr}`)).toMatchObject({ count: 0 });
   });
 
   it("takes a bet as an order while the market is still being confirmed", async () => {

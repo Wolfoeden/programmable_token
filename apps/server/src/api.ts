@@ -22,6 +22,8 @@ import {
   DEFAULT_BATCHER_FEE,
   ORDER_DEPOSIT,
   buildBurnWorthless,
+  buildReclaimReferences,
+  parseReferenceMarket,
   buildClaim,
   buildClaimOrder,
   claimValue,
@@ -403,6 +405,45 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
     const tokens: Assets = {};
     for (const [outcome, q] of positions) tokens[unit(s.ctx.contracts.marketHash, positionName(m.datum.marketId, outcome))] = q;
     return toJson({ tx: (await buildClaimOrder(lucid, s.ctx.contracts, m, tokens)).toCBOR(), value: claimValue(m.datum, positions) });
+  });
+
+  // ## Operator: reference-NFT deposits of decided markets
+
+  const isOperator = (address: string) => {
+    try {
+      return getAddressDetails(bech32(address)).paymentCredential?.hash === s.ctx.operator.keyHash;
+    } catch {
+      return false;
+    }
+  };
+  /** Reference NFTs (with their deposit) of markets that are decided. */
+  const reclaimableReferences = async () => {
+    const decided = new Map(s.index.live.filter((m) => m.datum.state.kind === "resolved").map((m) => [m.datum.marketId, m]));
+    const refs = await s.ctx.operator.lucid.utxosAt(s.ctx.contracts.metadataAddress);
+    return refs.filter((u) => Object.keys(u.assets).some((k) => {
+      const id = parseReferenceMarket(s.ctx.contracts, k);
+      return !!id && decided.has(id);
+    }));
+  };
+
+  /** What the operator wallet can take back; isOperator tells the app whether to show the button. */
+  app.get("/api/operator/deposits", async (req) => {
+    const { address } = z.object({ address: z.string().min(10) }).parse(req.query);
+    if (!isOperator(address)) return { isOperator: false, count: 0, lovelace: "0" };
+    const refs = await reclaimableReferences();
+    return { isOperator: true, count: refs.length, lovelace: refs.reduce((a, u) => a + (u.assets.lovelace ?? 0n), 0n).toString() };
+  });
+
+  /** Operator wallet only: burn the reference NFTs of decided markets and take back their deposits. */
+  app.post("/api/tx/reclaim-deposits", async (req) => {
+    const body = WalletBody.parse(req.body);
+    if (!isOperator(body.address)) throw new HttpError(403, "operator_only", "Only the operator wallet can withdraw deposits");
+    const refs = await reclaimableReferences();
+    if (refs.length === 0) throw new HttpError(422, "nothing_to_withdraw", "No deposits of decided markets to withdraw");
+    // Checked above to be the operator; in demo mode it is not a demo wallet.
+    const lucid = s.cfg.DEMO ? await s.ctx.userLucid(bech32(body.address), body.utxos) : await walletLucid(body);
+    const tx = await buildReclaimReferences(lucid, s.ctx.contracts, refs);
+    return { tx: tx.toCBOR(), count: refs.length, lovelace: refs.reduce((a, u) => a + (u.assets.lovelace ?? 0n), 0n).toString() };
   });
 
   /** Burn the wallet's worthless tickets (losing side of resolved markets); frees their ADA. */

@@ -13,6 +13,9 @@ export interface SiteMenuProps {
   /** Operator mode is on (house). */
   operator?: boolean;
   onLeaveOperator?: () => void;
+  /** Connected wallet is the operator wallet: deposits it can take back. */
+  deposits?: { count: number; lovelace: string } | null;
+  onWithdrawDeposits?: () => void;
 }
 
 /**
@@ -58,6 +61,13 @@ export function SiteMenu(p: SiteMenuProps) {
               <button type="button" role="menuitem" onClick={pick(p.onMyBets)}>
                 My bets
               </button>
+              {p.deposits && p.onWithdrawDeposits && (
+                <button type="button" role="menuitem" disabled={p.deposits.count === 0} onClick={pick(p.onWithdrawDeposits)}>
+                  {p.deposits.count > 0
+                    ? `Operator: withdraw deposits (${(Number(p.deposits.lovelace) / 1e6).toFixed(2)} ₳)`
+                    : "Operator: no deposits to withdraw"}
+                </button>
+              )}
               <button type="button" role="menuitem" onClick={pick(p.onDisconnect)}>
                 Disconnect wallet
               </button>

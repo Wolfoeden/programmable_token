@@ -421,6 +421,28 @@ export async function buildBurnWorthless(lucid: LucidEvolution, c: Contracts, ma
   return { tx, burned };
 }
 
+/**
+ * Operator: take back the deposits of CIP-68 reference NFTs (about 2 ADA
+ * each) by burning them. The metadata store only needs the operator's
+ * signature; burning is always allowed by the market policy. Wallets then
+ * show the market's tickets without name and ticker, so do this only for
+ * decided markets. Close works without them.
+ */
+export async function buildReclaimReferences(lucid: LucidEvolution, c: Contracts, references: UTxO[], opts: BuildOptions = {}): Promise<TxSignBuilder> {
+  if (references.length === 0) throw new MarketError("nothing_to_burn");
+  const operator = await lucid.wallet().address();
+  const burn: Assets = {};
+  for (const r of references) for (const u of Object.keys(r.assets)) if (u.startsWith(c.marketHash)) burn[u] = (burn[u] ?? 0n) - (r.assets[u] ?? 0n);
+  return lucid
+    .newTx()
+    .collectFrom(references, SpendRedeemer.close())
+    .attach.SpendingValidator(c.metadata)
+    .mintAssets(burn, MintRedeemer.mintOrBurn())
+    .attach.MintingPolicy(c.market)
+    .addSigner(operator)
+    .complete(completeWith(opts));
+}
+
 /** Operator closes a market after the claim deadline and burns its NFTs. */
 export async function buildClose(
   lucid: LucidEvolution,

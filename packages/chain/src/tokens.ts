@@ -54,6 +54,14 @@ export function parsePositionName(assetName: string): { marketId: string; outcom
   };
 }
 
+/** Market id of a CIP-68 reference NFT unit (policy + name) under the market policy, or null. */
+export function parseReferenceMarket(c: { marketHash: string }, unit: string): string | null {
+  if (!unit.startsWith(c.marketHash)) return null;
+  const name = unit.slice(56);
+  if (name.length !== 64 || !name.startsWith(CIP68_REF_PREFIX)) return null;
+  return name.slice(8, 8 + MARKET_ID_BYTES * 2);
+}
+
 export function utf8ToHex(text: string): string {
   return bytesToHex(new TextEncoder().encode(text));
 }

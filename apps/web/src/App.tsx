@@ -308,6 +308,30 @@ export function App() {
       toast("ok", t.submitted, hash);
     });
 
+  // Operator wallet connected: deposits of decided markets it can take back.
+  const [deposits, setDeposits] = useState<{ count: number; lovelace: string } | null>(null);
+  const loadDeposits = useCallback(async () => {
+    if (!wallet || wallet.kind !== "cip30") return setDeposits(null);
+    try {
+      const r = await api.operatorDeposits((await wallet.payload()).address);
+      setDeposits(r.isOperator ? { count: r.count, lovelace: r.lovelace } : null);
+    } catch {
+      setDeposits(null);
+    }
+  }, [wallet]);
+  useEffect(() => {
+    void loadDeposits();
+    const id = setInterval(loadDeposits, 60_000);
+    return () => clearInterval(id);
+  }, [loadDeposits]);
+
+  const onWithdrawDeposits = () =>
+    withWallet(async (w) => {
+      const hash = await signAndSubmit(w, (p) => api.reclaimDepositsTx(p));
+      toast("ok", "Deposits withdrawn to the operator wallet.", hash);
+      setTimeout(() => void loadDeposits(), 30_000);
+    });
+
   const onBurnLost = () =>
     withWallet(async (w) => {
       const hash = await signAndSubmit(w, (p) => api.burnTx(p));
@@ -390,6 +414,8 @@ export function App() {
           onMyBets={() => setSelection({ kind: "portfolio" })}
           onAbout={() => setAbout(true)}
           operator={!!operator}
+          deposits={deposits}
+          onWithdrawDeposits={onWithdrawDeposits}
           onLeaveOperator={() => {
             store(ADMIN_KEY, null);
             setOperator(null);

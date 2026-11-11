@@ -44,6 +44,12 @@ Die Daten dafür liefert `/api/aircraft` im Feld `arrivals`. Die Spuren bis zu v
 - **Schwelle**: Das Haus legt sie fest, nämlich die geschätzte Ankunft gerundet auf 5 Minuten. Nutzer können nur diesen Markt anlegen, keine eigenen Schwellen.
 - **Abgeschaltet**: Rennen, weil Spieler genau die Paare wählen würden, bei denen das Modell falsch liegt. Verspätungs-Märkte mit simuliertem Flugplan, weil das eine erfundene Planzeit wäre. In `MarketMaker` lassen sie sich nur für Tests wieder einschalten.
 
+### Annullieren
+
+- **Automatisch**: Das Oracle annulliert einen Markt, sobald das Flugzeug erkennbar woanders hinfliegt: mehr als 80 km neben der Strecke, mit wachsendem Abstand, über mindestens 3 Minuten. Es wartet also nicht erst die Landung am falschen Ort ab.
+- **Von Hand (Betreiber)**: `flightradar.fun/#operator` öffnen und den `ADMIN_TOKEN` aus Render eingeben. Danach hat jeder offene Markt den Knopf „Operator: void market". Der Grund erscheint bei den Spielern. Dahinter steht `POST /api/admin/markets/<id>/void` mit `Authorization: Bearer <ADMIN_TOKEN>`.
+- **Auszahlung**: Der Vertrag erlaubt dem Betreiber jederzeit `Resolve` ohne Gewinner. Gebuchte Einsätze holt man unter „My bets" mit „Refund" 1:1 zurück. Noch nicht gebuchte Orders mit „Get … back".
+
 ## Schattenbetrieb
 
 Bevor es feste Quoten gibt, sammelt der Server Daten, um Marge, Wettschluss und Limits zu bestimmen. Alles landet in `DATA_DIR/shadow` als JSON-Zeilen, eine Datei pro Tag:

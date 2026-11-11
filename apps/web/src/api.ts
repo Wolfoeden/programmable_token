@@ -45,7 +45,12 @@ export interface WalletPayload {
   utxos: string[];
 }
 
+const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
+
 export const api = {
+  adminCheck: (token: string) => request<{ ok: boolean }>("/api/admin/check", { headers: bearer(token) }),
+  voidMarket: (token: string, marketId: string, reason: string) =>
+    request<{ txHash: string }>(`/api/admin/markets/${marketId}/void`, { method: "POST", headers: bearer(token), body: JSON.stringify({ reason }) }),
   health: () => request<Health>("/api/health"),
   aircraft: () => request<AircraftResponse>("/api/aircraft"),
   tracks: (hexes: string[]) => request<{ tracks: Record<string, TrackPoint[]> }>(`/api/tracks?hex=${hexes.join(",")}`),

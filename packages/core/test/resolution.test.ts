@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectTouchdown, judge, type FlightRef, type Observation, type Question } from "../src/index.js";
+import { airportByIcao, bearingDeg, destinationPoint, detectTouchdown, flyingElsewhere, judge, type FlightRef, type Observation, type Question } from "../src/index.js";
 
 const flight: FlightRef = { callsign: "DLH400", flightNumber: "LH400", icao24: "3c4b21", origin: "KJFK", destination: "EDDF" };
 const t0 = Date.UTC(2026, 10, 2, 17, 0);
@@ -97,5 +97,24 @@ describe("judge", () => {
     expect(judge(rq, { [flight.icao24]: td("EDDF", s(200)) }, s(500), s(9999))).toMatchObject({ status: "pending" });
     expect(judge(rq, { [flight.icao24]: td("EDDF", s(200)), [b.icao24]: td("EDDK", s(100)) }, s(500), s(9999))).toMatchObject({ winner: null });
     expect(judge(rq, { [flight.icao24]: td("EDDF", s(200)), [b.icao24]: td("EDDF", s(200)) }, s(500), s(9999))).toMatchObject({ winner: null });
+  });
+});
+
+describe("flyingElsewhere", () => {
+  const OAK = airportByIcao("KOAK")!;
+  const LAS = airportByIcao("KLAS")!;
+  const PHX = airportByIcao("KPHX")!;
+  const track = (to: typeof LAS, kms: number[], t0: number) =>
+    kms.map((km, i) => {
+      const p = destinationPoint(OAK, bearingDeg(OAK, to), km);
+      return { t: t0 + i * 60_000, lat: p.lat, lon: p.lon, altFt: 35000, onGround: false, gsKt: 450 };
+    });
+  it("flags a flight listed to Las Vegas that flies to Phoenix", () => {
+    const obs = track(PHX, [420, 435, 450, 465, 480, 495], 0);
+    expect(flyingElsewhere(obs, OAK, LAS, 5 * 60_000)).toMatch(/not flying/);
+  });
+  it("leaves a real Las Vegas flight alone, and needs a few minutes of data", () => {
+    expect(flyingElsewhere(track(LAS, [420, 435, 450, 465, 480, 495], 0), OAK, LAS, 5 * 60_000)).toBeNull();
+    expect(flyingElsewhere(track(PHX, [480, 495], 0), OAK, LAS, 60_000)).toBeNull();
   });
 });

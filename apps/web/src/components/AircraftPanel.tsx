@@ -19,6 +19,7 @@ export interface AircraftPanelProps {
   onPrepare: MarketCardProps["onPrepare"];
   onConfirm: MarketCardProps["onConfirm"];
   onCreate: (body: unknown) => Promise<unknown>;
+  onVoid?: MarketCardProps["onVoid"];
   /** Set when the flight has left the list: what happened since. */
   arrivalNote?: string | null;
   onClose: () => void;
@@ -125,7 +126,7 @@ export function AircraftPanel(p: AircraftPanelProps) {
         )}
 
         {sorted.map((m) => (
-          <MarketCard key={m.id} market={m} busy={p.busy} simple onPrepare={p.onPrepare} onConfirm={p.onConfirm} />
+          <MarketCard key={m.id} market={m} busy={p.busy} simple onPrepare={p.onPrepare} onConfirm={p.onConfirm} {...(p.onVoid ? { onVoid: p.onVoid } : {})} />
         ))}
         {!landingMarket &&
           (a?.airport && !tooClose ? (

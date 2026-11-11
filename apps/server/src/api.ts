@@ -40,6 +40,7 @@ import type { RouteSource } from "./routes.js";
 import type { ScheduleProvider } from "./schedule.js";
 import type { Store } from "./store.js";
 import type { Tracker } from "./tracker.js";
+import type { Oracle } from "./oracle.js";
 import type { ShadowLog } from "./shadow.js";
 import type { CamTraffic } from "./traffic.js";
 import { HttpError, RateLimiter, toJson } from "./util.js";
@@ -57,6 +58,8 @@ export interface Services {
   tracker: Tracker;
   /** Shadow log of model, outcomes and bets (optional in tests). */
   shadow?: ShadowLog;
+  /** For operator actions (void). Optional in tests. */
+  oracle?: Oracle;
 }
 
 const Hex = z.string().regex(/^[0-9a-fA-F]+$/);
@@ -481,12 +484,38 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
 
   // ## Admin: shadow log download (only with ADMIN_TOKEN)
 
-  if (s.cfg.ADMIN_TOKEN && s.shadow) {
+  const adminToken = s.cfg.ADMIN_TOKEN;
+  const auth = (req: FastifyRequest) => {
+    if (!adminToken || req.headers.authorization !== `Bearer ${adminToken}`) throw new HttpError(401, "unauthorized", "Admin token missing or wrong");
+  };
+
+  /** Check an admin token (the app's operator mode). */
+  app.get("/api/admin/check", async (req) => {
+    auth(req);
+    return { ok: true };
+  });
+
+  /**
+   * Operator: void a market now (wrong route data, a wrong market, ...).
+   * Everyone gets their stake back 1:1 via claim.
+   */
+  app.post("/api/admin/markets/:id/void", async (req) => {
+    auth(req);
+    const { id } = z.object({ id: MarketId }).parse(req.params);
+    const { reason } = z.object({ reason: z.string().trim().min(3).max(200) }).parse(req.body ?? {});
+    if (!s.oracle) throw new HttpError(501, "not_available");
+    const m = s.index.market(id);
+    if (!m) throw new HttpError(404, "market_not_found", "Market not confirmed yet or unknown");
+    if (s.index.isStale(id)) throw new HttpError(409, "market_updating", "Market is updating, please try again shortly");
+    const txHash = await s.oracle.voidNow(m, reason).catch((e) => {
+      throw new HttpError(409, "void_failed", String(e instanceof Error ? e.message : e));
+    });
+    setTimeout(() => void s.index.refresh(), 1500);
+    return { txHash };
+  });
+
+  if (adminToken && s.shadow) {
     const shadow = s.shadow;
-    const token = s.cfg.ADMIN_TOKEN;
-    const auth = (req: FastifyRequest) => {
-      if (req.headers.authorization !== `Bearer ${token}`) throw new HttpError(401, "unauthorized");
-    };
     app.get("/api/admin/shadow", async (req) => {
       auth(req);
       return { files: shadow.files() };

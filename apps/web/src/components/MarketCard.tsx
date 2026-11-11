@@ -28,6 +28,8 @@ export interface MarketCardProps {
   busy?: boolean;
   onPrepare: (market: MarketDto, outcome: number, stakeLovelace: bigint) => Promise<PreparedBet | null>;
   onConfirm: (bet: PreparedBet) => Promise<boolean>;
+  /** Operator mode: void the market (refund everyone). */
+  onVoid?: (market: MarketDto) => void;
 }
 
 function colorFor(m: MarketDto, i: number) {
@@ -103,7 +105,7 @@ function Confirm({ bet, busy, onBack, onConfirm }: { bet: PreparedBet; busy?: bo
   );
 }
 
-export function MarketCard({ market: m, highlight, simple, busy, onPrepare, onConfirm }: MarketCardProps) {
+export function MarketCard({ market: m, highlight, simple, busy, onPrepare, onConfirm, onVoid }: MarketCardProps) {
   const now = useNow(1000);
   const [outcome, setOutcome] = useState<number | null>(null);
   const [stakeAda, setStakeAda] = useState("10");
@@ -207,6 +209,11 @@ export function MarketCard({ market: m, highlight, simple, busy, onPrepare, onCo
       )}
       {simple && <div className="pool-note duo-note">Pool shares, market-based · not a probability</div>}
       <RulesPanel m={m} />
+      {onVoid && (m.phase === "open" || m.phase === "closed") && (
+        <button type="button" className="btn small flat operator-void" disabled={busy} onClick={() => onVoid(m)}>
+          Operator: void market (refund everyone)
+        </button>
+      )}
       {!simple && m.seed && (
         <div className="pool-note">
           {t.seedModel}: {m.seed.probabilities.map((p) => formatPercent(p, "en-US")).join(" / ")} from the model ({m.seed.model}).

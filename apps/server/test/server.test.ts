@@ -86,7 +86,7 @@ let shadow: ShadowLog;
 
 describe("server pipeline (emulator, fake flight data)", () => {
   beforeAll(async () => {
-    const cfg = loadConfig({ DEMO: "1", DATA_DIR: mkdtempSync(join(tmpdir(), "frf-")) } as NodeJS.ProcessEnv);
+    const cfg = loadConfig({ DEMO: "1", ADMIN_TOKEN: "test-admin-token-123", DATA_DIR: mkdtempSync(join(tmpdir(), "frf-")) } as NodeJS.ProcessEnv);
     ctx = await createChain(cfg);
     adsb = new FakeAdsb();
     const store = new Store(cfg.DATA_DIR);
@@ -97,7 +97,7 @@ describe("server pipeline (emulator, fake flight data)", () => {
     oracle = new Oracle(ctx, tracker, undefined, store);
     batcher = new Batcher(ctx);
     shadow = new ShadowLog(cfg.DATA_DIR);
-    app = await buildApi({ cfg, ctx, index, adsb, routes: new FakeRoutes(), schedule: undefined, store, maker, traffic, tracker, shadow });
+    app = await buildApi({ cfg, ctx, index, adsb, routes: new FakeRoutes(), schedule: undefined, store, maker, traffic, tracker, shadow, oracle });
     // BA902 cruising towards Frankfurt, 600 km west of it.
     const now = ctx.now();
     // On the Frankfurt → London line (route checks need the aircraft on its leg).
@@ -215,5 +215,23 @@ describe("server pipeline (emulator, fake flight data)", () => {
     const { market } = await call<{ market: { phase: string; pools: string[] } }>("GET", `/api/markets/${created.marketId}`);
     expect(market.phase).toBe("open");
     expect(market.pools.reduce((a, b) => a + BigInt(b), 0n)).toBe(25_000_000n);
+
+    // The operator voids it (e.g. wrong route data): only with the admin token.
+    const denied = await app.inject({ method: "POST", url: `/api/admin/markets/${created.marketId}/void`, payload: { reason: "route data wrong" } });
+    expect(denied.statusCode).toBe(401);
+    const ok = await app.inject({
+      method: "POST",
+      url: `/api/admin/markets/${created.marketId}/void`,
+      headers: { authorization: "Bearer test-admin-token-123" },
+      payload: { reason: "route data wrong" },
+    });
+    expect(ok.statusCode).toBe(200);
+    await block();
+    const after = await call<{ market: { phase: string; resolution?: { reason: string } } }>("GET", `/api/markets/${created.marketId}`);
+    expect(after.market.phase).toBe("void");
+    expect(after.market.resolution?.reason).toMatch(/voided by the operator: route data wrong/);
+    const wc = await call<{ address: string; utxos: string[] }>("GET", "/api/demo/wallets/carol/utxos");
+    const claim = await call<{ value: string }>("POST", "/api/tx/claim", { ...wc, marketId: created.marketId });
+    expect(claim.value).toBe("5000000"); // stake back 1:1
   });
 });

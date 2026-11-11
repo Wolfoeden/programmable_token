@@ -4,7 +4,7 @@
  * @flightradar/core and, once final, signs a Resolve transaction. The full
  * evidence is stored for audit.
  */
-import { flightKey, flightsOf, judge, type FlightStatus, type Observation } from "@flightradar/core";
+import { airportByIcao, flightKey, flightsOf, flyingElsewhere, judge, type FlightStatus, type Observation, type Verdict } from "@flightradar/core";
 import { buildClose, buildResolve, fetchReferenceNfts, type MarketView } from "@flightradar/chain";
 import type { ChainContext } from "./chain.js";
 import type { ScheduleProvider } from "./schedule.js";
@@ -80,19 +80,44 @@ export class Oracle {
         statuses[flightKey(f)] = s;
         observations[flightKey(f)] = this.tracker.observations(f);
       }
-      const verdict = judge(q, statuses, now, Number(m.datum.resolveDeadline) - GIVE_UP_MARGIN_MS);
-      if (verdict.status !== "final") continue;
-      this.inflight.set(m.datum.marketId, now + 5 * 60_000);
-      try {
-        const txHash = await this.ctx.operator.run((walletUtxos) =>
-          buildResolve(this.ctx.operator.lucid, this.ctx.contracts, m, verdict.winner, { walletUtxos }),
-        );
-        this.store.putEvidence({ marketId: m.datum.marketId, verdict, decidedAt: now, txHash, statuses, observations });
-        log.info("market resolved", { marketId: m.datum.marketId, winner: verdict.winner, reason: verdict.reason, txHash });
-      } catch (e) {
-        this.inflight.delete(m.datum.marketId);
-        log.warn("resolve failed", { marketId: m.datum.marketId, error: String(e) });
+      let verdict: Verdict = judge(q, statuses, now, Number(m.datum.resolveDeadline) - GIVE_UP_MARGIN_MS);
+      // Route data can be wrong (reused flight numbers): void as soon as the
+      // aircraft is clearly flying somewhere else, not only after it lands there.
+      if (verdict.status !== "final" && (q.kind === "landing_before" || q.kind === "delay")) {
+        const elsewhere = flyingElsewhere(observations[flightKey(q.flight)] ?? [], airportByIcao(q.flight.origin), airportByIcao(q.flight.destination), now);
+        if (elsewhere) verdict = { status: "final", winner: null, reason: elsewhere };
       }
+      if (verdict.status !== "final") continue;
+      await this.settle(m, verdict, { statuses, observations });
+    }
+  }
+
+  /** Void a market at once (operator decision); all stakes are refunded 1:1. */
+  async voidNow(m: MarketView, reason: string): Promise<string> {
+    if (m.datum.state.kind !== "open") throw new Error("market_not_open");
+    const txHash = await this.settle(m, { status: "final", winner: null, reason: `voided by the operator: ${reason}` }, {});
+    if (!txHash) throw new Error("void_failed");
+    return txHash;
+  }
+
+  private async settle(
+    m: MarketView,
+    verdict: Extract<Verdict, { status: "final" }>,
+    data: { statuses?: Record<string, FlightStatus>; observations?: Record<string, Observation[]> },
+  ): Promise<string | null> {
+    const now = Date.now();
+    this.inflight.set(m.datum.marketId, now + 5 * 60_000);
+    try {
+      const txHash = await this.ctx.operator.run((walletUtxos) =>
+        buildResolve(this.ctx.operator.lucid, this.ctx.contracts, m, verdict.winner, { walletUtxos }),
+      );
+      this.store.putEvidence({ marketId: m.datum.marketId, verdict, decidedAt: now, txHash, statuses: data.statuses ?? {}, observations: data.observations ?? {} });
+      log.info("market resolved", { marketId: m.datum.marketId, winner: verdict.winner, reason: verdict.reason, txHash });
+      return txHash;
+    } catch (e) {
+      this.inflight.delete(m.datum.marketId);
+      log.warn("resolve failed", { marketId: m.datum.marketId, error: String(e) });
+      return null;
     }
   }
 }

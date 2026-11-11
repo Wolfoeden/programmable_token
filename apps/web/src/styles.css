@@ -1344,6 +1344,12 @@ details.rules summary {
   margin-right: 4px;
 }
 
+.operator-void {
+  margin: 0 10px 10px;
+  color: var(--no);
+  border-color: rgba(255, 107, 107, 0.4);
+}
+
 /* ## Site menu */
 
 .site-menu {

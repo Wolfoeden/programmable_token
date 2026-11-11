@@ -10,6 +10,9 @@ export interface SiteMenuProps {
   onDisconnect: () => void;
   onMyBets: () => void;
   onAbout: () => void;
+  /** Operator mode is on (house). */
+  operator?: boolean;
+  onLeaveOperator?: () => void;
 }
 
 /**
@@ -62,6 +65,11 @@ export function SiteMenu(p: SiteMenuProps) {
           ) : (
             <button type="button" role="menuitem" onClick={pick(p.onConnect)}>
               Connect wallet {p.netLabel && <span className="net-tag">{p.netLabel}</span>}
+            </button>
+          )}
+          {p.operator && p.onLeaveOperator && (
+            <button type="button" role="menuitem" onClick={pick(p.onLeaveOperator)}>
+              Leave operator mode
             </button>
           )}
           <hr />

@@ -37,7 +37,7 @@ async function main() {
   const batcher = new Batcher(ctx);
 
   await index.refresh();
-  const app = await buildApi({ cfg, ctx, index, adsb, routes, schedule, store, maker, traffic, tracker, shadow });
+  const app = await buildApi({ cfg, ctx, index, adsb, routes, schedule, store, maker, traffic, tracker, shadow, oracle });
   await app.listen({ port: cfg.PORT, host: cfg.HOST });
   log.info(`listening on http://${cfg.HOST}:${cfg.PORT}`, { demo: cfg.DEMO, network: ctx.network, schedule: schedule?.name ?? "none" });
 

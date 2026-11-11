@@ -24,6 +24,23 @@ import { connectBrowserWallet, demoWallet, signAndSubmit, signBuilt, type AppWal
 type Selection = { kind: "aircraft"; hex: string } | { kind: "airport"; icao: string } | { kind: "market"; id: string } | { kind: "portfolio" } | null;
 
 const WALLET_KEY = "frf.wallet";
+const ADMIN_KEY = "frf.operator";
+
+function stored(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+function store(key: string, value: string | null) {
+  try {
+    if (value) localStorage.setItem(key, value);
+    else localStorage.removeItem(key);
+  } catch {
+    // storage unavailable: operator mode lasts for this page only
+  }
+}
 
 /** Flights the switcher offers: landing soon at a live-stream airport, by arrival. */
 function bettableFlights(list: AircraftDto[]): AircraftDto[] {
@@ -78,6 +95,8 @@ export function App() {
   const [infoPage, setInfoPage] = useState<InfoPage | null>(pageFromHash);
   const selectionRef = useRef<Selection>(null);
   const toastId = useRef(0);
+  /** Operator mode (house): admin token entered via #operator. */
+  const [operator, setOperator] = useState<string | null>(() => stored(ADMIN_KEY));
   /** "Preprod ADA" etc.: what the site's stakes are, shown at the wallet. */
   const netLabel = health ? (health.demo ? "Play money" : `${health.network} ADA`) : null;
 
@@ -91,10 +110,44 @@ export function App() {
   selectionRef.current = selection;
 
   useEffect(() => {
-    const onHash = () => setInfoPage(pageFromHash());
+    const onHash = () => {
+      setInfoPage(pageFromHash());
+      if (window.location.hash === "#operator") void enterOperator();
+    };
+    if (window.location.hash === "#operator") void enterOperator();
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
+  async function enterOperator() {
+    history.replaceState(null, "", window.location.pathname + window.location.search);
+    const token = window.prompt("Operator mode: paste the admin token (ADMIN_TOKEN from Render).");
+    if (!token) return;
+    try {
+      await api.adminCheck(token.trim());
+      store(ADMIN_KEY, token.trim());
+      setOperator(token.trim());
+      toast("ok", "Operator mode on. Open markets show a void button.");
+    } catch (e) {
+      toast("error", errorText(e));
+    }
+  }
+
+  const onVoid = async (m: MarketDto) => {
+    if (!operator) return;
+    const reason = window.prompt(`Void "${m.title.en}"?\nEveryone gets their stake back 1:1. Reason (shown to players):`, "Route data was wrong");
+    if (!reason || reason.trim().length < 3) return;
+    setBusy(true);
+    try {
+      const r = await api.voidMarket(operator, m.id, reason.trim());
+      toast("ok", "Market voided. Stakes can be claimed back 1:1.", r.txHash);
+      markets.reload();
+    } catch (e) {
+      toast("error", errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const closeInfo = () => {
     history.replaceState(null, "", window.location.pathname + window.location.search);
     setInfoPage(null);
@@ -317,6 +370,11 @@ export function App() {
           }}
           onMyBets={() => setSelection({ kind: "portfolio" })}
           onAbout={() => setAbout(true)}
+          operator={!!operator}
+          onLeaveOperator={() => {
+            store(ADMIN_KEY, null);
+            setOperator(null);
+          }}
         />
       </header>
 
@@ -350,6 +408,7 @@ export function App() {
           onPrepare={onPrepare}
           onConfirm={onConfirm}
           onCreate={onCreate}
+          {...(operator ? { onVoid } : {})}
           onClose={() => setSelection(null)}
           position={{ index: flights.findIndex((f) => f.hex === selection.hex), count: flights.length }}
           nextOpen={flights.find((f) => f.hex !== selection.hex && (bettable(f, now) || !!f.markets)) ?? null}
@@ -378,13 +437,14 @@ export function App() {
             </button>
           </div>
           <div className="panel-body">
-            <MarketCard market={selectedMarket} highlight busy={busy} onPrepare={onPrepare} onConfirm={onConfirm} />
+            <MarketCard market={selectedMarket} highlight busy={busy} onPrepare={onPrepare} onConfirm={onConfirm} {...(operator ? { onVoid } : {})} />
           </div>
         </aside>
       )}
       {selection?.kind === "portfolio" && wallet && (
         <PortfolioPanel
           wallet={wallet}
+          markets={marketList}
           busy={busy}
           onClaim={onClaim}
           onCancel={onCancel}

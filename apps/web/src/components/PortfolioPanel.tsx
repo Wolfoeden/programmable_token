@@ -12,6 +12,8 @@ export interface PortfolioPanelProps {
   onCancel: (orderRef: string) => void;
   onOpenMarket: (m: MarketDto) => void;
   onClose: () => void;
+  /** All markets, to name the market of an open order. */
+  markets?: MarketDto[];
 }
 
 export function PortfolioPanel(p: PortfolioPanelProps) {
@@ -62,9 +64,10 @@ export function PortfolioPanel(p: PortfolioPanelProps) {
                   )}
                   {m && (m.phase === "resolved" || m.phase === "void") && claimable > 0n && (
                     <button type="button" className="btn small primary" disabled={p.busy} onClick={() => p.onClaim(pos.marketId)}>
-                      {t.claim} {ada(claimable)}
+                      {m.phase === "void" ? `Refund ${ada(claimable)}` : `${t.claim} ${ada(claimable)}`}
                     </button>
                   )}
+                  {m?.phase === "void" && <span className="badge">Void: {m.resolution?.reason ?? "stakes refunded 1:1"}</span>}
                   {m && m.phase === "resolved" && claimable === 0n && <span className="badge no">{t.lost}</span>}
                 </div>
               </div>
@@ -73,20 +76,29 @@ export function PortfolioPanel(p: PortfolioPanelProps) {
         })}
         {data && data.orders.length > 0 && <div className="section-title">{t.openOrders}</div>}
         <div className="list">
-          {data?.orders.map((o) => (
-            <div className="row" key={o.ref}>
-              <span className="time">{o.order.kind === "bet" ? "Bet" : "Claim"}</span>
-              <div className="what">
-                <div className="t num">
-                  {o.order.kind === "bet" ? `${ada(o.order.stake)} on #${o.order.outcome}` : "Positions submitted"}
+          {data?.orders.map((o) => {
+            const m = p.markets?.find((x) => x.id === o.marketId);
+            const dead = m && (m.phase === "void" || m.phase === "resolved" || m.phase === "closed");
+            return (
+              <div className="row" key={o.ref}>
+                <span className="time">{o.order.kind === "bet" ? "Bet" : "Claim"}</span>
+                <div className="what">
+                  <div className="t num">
+                    {o.order.kind === "bet" ? `${ada(o.order.stake)} on ${m?.labels.en[o.order.outcome] ?? `#${o.order.outcome}`}` : "Positions submitted"}
+                  </div>
+                  <div className="s">{m ? m.title.en : `${o.marketId.slice(0, 12)}…`}</div>
+                  <div className="s">
+                    {dead
+                      ? `Not booked: the market is ${m!.phase === "void" ? "void" : m!.phase}. Cancel to get ${ada(o.lovelace)} back.`
+                      : "Waiting to be booked into the pool. You can cancel it until then."}
+                  </div>
                 </div>
-                <div className="s">{o.marketId.slice(0, 12)}…</div>
+                <button type="button" className={`btn small${dead ? " primary" : " flat"}`} disabled={p.busy} onClick={() => p.onCancel(o.ref)}>
+                  {dead ? `Get ${ada(o.lovelace)} back` : t.cancelOrder}
+                </button>
               </div>
-              <button type="button" className="btn small flat" disabled={p.busy} onClick={() => p.onCancel(o.ref)}>
-                {t.cancelOrder}
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </aside>

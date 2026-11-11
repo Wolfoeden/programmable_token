@@ -4,6 +4,7 @@
  */
 import { nearestAirport, type Airport } from "./airports.js";
 import { flightsOf, type FlightRef, type Question } from "./questions.js";
+import { crossTrackKm, distanceKm, type LatLon } from "./geo.js";
 
 export interface Observation {
   /** Unix ms of the position. */
@@ -173,4 +174,27 @@ export function judge(
       return { status: "final", winner, reason: `first touchdown ${new Date(best).toISOString()}` };
     }
   }
+}
+
+/** Off the origin–destination line by more than this, and moving further off: flying elsewhere. */
+export const OFF_ROUTE_KM = 80;
+
+/**
+ * Is the flight clearly not flying to its destination? Route data can be
+ * wrong (reused flight numbers), so the oracle voids such markets early
+ * instead of waiting for a landing elsewhere. Needs airborne observations
+ * at least 3 minutes apart in the last 15 minutes, the latest more than
+ * 80 km off the line and more than 60 km from the destination, and the
+ * offset still growing.
+ */
+export function flyingElsewhere(observations: readonly Observation[], origin: LatLon | undefined, destination: LatLon | undefined, nowMs: number): string | null {
+  if (!origin || !destination) return null;
+  const recent = observations.filter((o) => !o.onGround && nowMs - o.t <= 15 * 60_000).sort((a, b) => a.t - b.t);
+  const first = recent[0];
+  const last = recent[recent.length - 1];
+  if (!first || !last || last.t - first.t < 3 * 60_000) return null;
+  const off = (o: LatLon) => crossTrackKm(o, origin, destination);
+  if (distanceKm(last, destination) <= 60) return null;
+  if (off(last) <= OFF_ROUTE_KM || off(last) < off(first) + 10) return null;
+  return `not flying to the destination: ${Math.round(off(last))} km off the route and moving away (route data was wrong)`;
 }

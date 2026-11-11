@@ -11,6 +11,7 @@ export function AboutDialog({ onClose }: { onClose: () => void }) {
   return (
     <div className="overlay" onClick={onClose}>
       <div className="dialog" role="dialog" aria-modal="true" aria-label={t.aboutTitle} onClick={(e) => e.stopPropagation()}>
+        <img className="about-logo" src="/logo-square.png" alt="flightradar.fun" />
         <h2>{t.aboutTitle}</h2>
         <p>
           The map shows flights that will land within the next hour at airports with a live stream: {WEBCAMS.map((w) => w.name).join(", ")}. Click one

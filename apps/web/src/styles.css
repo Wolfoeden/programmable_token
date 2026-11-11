@@ -1,5 +1,5 @@
 :root {
-  --bg: #0b0d10;
+  --bg: #0f1016;
   --surface: rgba(17, 20, 25, 0.94);
   --surface-2: #171b21;
   --surface-3: #1f252d;
@@ -8,7 +8,7 @@
   --text: #e8ecf1;
   --text-2: #a3adba;
   --text-3: #6f7a88;
-  --accent: #ffc53d;
+  --accent: #ffca06;
   --accent-ink: #1a1405;
   --yes: #3ddc97;
   --no: #ff6b6b;
@@ -728,11 +728,52 @@ details.rules summary {
   color: var(--text-2);
 }
 
-.legend {
+/* Logo and legend, top left */
+.top-left {
   position: absolute;
   left: 12px;
-  top: 14px;
+  top: 12px;
   z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.top-left > * {
+  pointer-events: auto;
+}
+
+.brand-logo {
+  display: block;
+  line-height: 0;
+}
+
+.brand-logo img {
+  display: block;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6));
+}
+
+.brand-logo .logo-wide {
+  height: 34px;
+  width: auto;
+}
+
+.brand-logo .logo-narrow {
+  display: none;
+  height: 38px;
+  width: 38px;
+}
+
+.about-logo {
+  display: block;
+  width: 160px;
+  height: auto;
+  margin: 0 auto 4px;
+}
+
+.legend {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -1750,9 +1791,18 @@ details.rules summary {
   .stats {
     grid-template-columns: repeat(2, 1fr);
   }
-  .legend {
-    top: 12px;
+  .top-left {
     left: 10px;
+    top: 10px;
+    gap: 6px;
+  }
+  .brand-logo .logo-wide {
+    display: none;
+  }
+  .brand-logo .logo-narrow {
+    display: block;
+  }
+  .legend {
     gap: 2px;
     font-size: 10px;
     padding: 4px 6px;

@@ -125,7 +125,7 @@ export function MapView(props: MapViewProps) {
         id: "route",
         type: "line",
         source: "route",
-        paint: { "line-color": "#ffc53d", "line-width": 1.5, "line-opacity": 0.6, "line-dasharray": [2, 2] },
+        paint: { "line-color": "#ffca06", "line-width": 1.5, "line-opacity": 0.6, "line-dasharray": [2, 2] },
       });
       map.addLayer({
         id: "trail",
@@ -140,7 +140,7 @@ export function MapView(props: MapViewProps) {
         paint: {
           "circle-radius": ["interpolate", ["linear"], ["zoom"], 3, 4, 9, 8],
           "circle-color": "#0b0d10",
-          "circle-stroke-color": "#ffc53d",
+          "circle-stroke-color": "#ffca06",
           "circle-stroke-width": 2,
         },
       });
@@ -150,7 +150,7 @@ export function MapView(props: MapViewProps) {
         source: "airports",
         minzoom: 4,
         layout: { "text-field": ["get", "iata"], "text-size": 12, "text-offset": [0, 1.2], "text-font": ["Noto Sans Regular"] },
-        paint: { "text-color": "#ffc53d", "text-halo-color": "#0b0d10", "text-halo-width": 1.2 },
+        paint: { "text-color": "#ffca06", "text-halo-color": "#0b0d10", "text-halo-width": 1.2 },
       });
       map.addLayer({
         id: "market-rings",
@@ -163,7 +163,7 @@ export function MapView(props: MapViewProps) {
           "icon-allow-overlap": true,
           "icon-ignore-placement": true,
         },
-        paint: { "icon-color": "#ffc53d", "icon-opacity": 0.95 },
+        paint: { "icon-color": "#ffca06", "icon-opacity": 0.95 },
       });
       map.addLayer({
         id: "aircraft-ground",

@@ -505,22 +505,28 @@ export function App() {
         />
       )}
 
-      <div className="legend" aria-hidden>
-        <span>
-          <span className="dot" style={{ background: "var(--yes)" }} />
-          <span className="label-wide">Landing within 1 h</span>
-          <span className="label-narrow">≤ 1 h</span>
-        </span>
-        <span>
-          <span className="ring" style={{ borderColor: "var(--accent)", background: "#0b0d10" }} />
-          <span className="label-wide">Live-stream airport</span>
-          <span className="label-narrow">Live cam</span>
-        </span>
-        <span>
-          <span className="diamond" />
-          <span className="label-wide">Departure airport</span>
-          <span className="label-narrow">Departure</span>
-        </span>
+      <div className="top-left">
+        <a className="brand-logo" href="/" aria-label="flightradar.fun home">
+          <img className="logo-wide" src="/logo-wordmark.png" alt="flightradar.fun" />
+          <img className="logo-narrow" src="/logo-icon.png" alt="flightradar.fun" />
+        </a>
+        <div className="legend" aria-hidden>
+          <span>
+            <span className="dot" style={{ background: "var(--yes)" }} />
+            <span className="label-wide">Landing within 1 h</span>
+            <span className="label-narrow">≤ 1 h</span>
+          </span>
+          <span>
+            <span className="ring" style={{ borderColor: "var(--accent)", background: "#0b0d10" }} />
+            <span className="label-wide">Live-stream airport</span>
+            <span className="label-narrow">Live cam</span>
+          </span>
+          <span>
+            <span className="diamond" />
+            <span className="label-wide">Departure airport</span>
+            <span className="label-narrow">Departure</span>
+          </span>
+        </div>
       </div>
       <Toasts items={toasts} onDismiss={(id) => setToasts((xs) => xs.filter((x) => x.id !== id))} />
       {walletDialog && <WalletDialog demo={!!health?.demo} network={health?.network ?? null} onPick={pickWallet} onClose={() => setWalletDialog(false)} />}

@@ -186,7 +186,7 @@ button {
 /* Banner under the top bar */
 .banner {
   position: absolute;
-  top: 20px;
+  top: 78px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 9;
@@ -782,21 +782,98 @@ details.rules summary {
 
 
 /* Flight switcher */
+/* Desktop: bar at the top centre. Mobile: round button at the bottom. */
+@media (min-width: 721px) and (max-width: 1150px) {
+  .switcher {
+    top: 64px !important;
+  }
+  .banner {
+    top: 130px;
+  }
+}
+
 .switcher {
   position: absolute;
-  bottom: 16px;
+  top: 12px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 11;
+  width: min(460px, calc(100% - 24px));
+}
+
+.sw-round {
+  display: none;
+}
+
+.sw-bar {
   display: flex;
+  flex-direction: column;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(10px);
+}
+
+.sw-bar-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.sw-bar .icon-btn {
+  width: 36px;
+  height: 36px;
+  font-size: 18px;
+  box-shadow: none;
+}
+
+.switcher-main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  padding: 4px 8px;
+  border: none;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.switcher-count {
+  font-size: 11px;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.sw-bar-what {
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sw-bar .switcher-msg {
+  border: 0;
+  background: none;
+  border-radius: 0;
+  max-width: none;
+  text-align: left;
+  font-size: 13px;
+}
+
+.sw-round {
   flex-direction: column;
   align-items: center;
   gap: 6px;
   pointer-events: none;
-  max-width: calc(100% - 24px);
 }
 
-.switcher > * {
+.sw-round > * {
   pointer-events: auto;
 }
 
@@ -806,7 +883,7 @@ details.rules summary {
   gap: 12px;
 }
 
-.switcher .icon-btn {
+.sw-round .icon-btn {
   margin: 0;
   width: 44px;
   height: 44px;
@@ -1559,7 +1636,16 @@ details.rules summary {
     text-align: center;
   }
   .switcher {
+    top: auto;
     bottom: 22px;
+    width: auto;
+    max-width: calc(100% - 24px);
+  }
+  .sw-bar {
+    display: none;
+  }
+  .sw-round {
+    display: flex;
   }
   .collapse-btn {
     display: grid;

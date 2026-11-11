@@ -17,7 +17,18 @@ import { log } from "./util.js";
 
 async function main() {
   const cfg = loadConfig();
-  const ctx = await createChain(cfg);
+  // The chain service may be briefly unavailable or rate-limited at start:
+  // retry for about five minutes instead of failing the deploy at once.
+  let ctx: Awaited<ReturnType<typeof createChain>> | undefined;
+  for (let attempt = 1; !ctx; attempt++) {
+    try {
+      ctx = await createChain(cfg);
+    } catch (e) {
+      if (attempt >= 20) throw e;
+      log.warn("chain not reachable yet, retrying in 15 s", { attempt, error: String(e).slice(0, 200) });
+      await new Promise((r) => setTimeout(r, 15_000));
+    }
+  }
   const adsb = new AdsbClient(cfg.ADSB_BASE_URL, cfg.ADSB_FALLBACK_URL);
   const routes = new RouteClient(cfg.ROUTE_BASE_URL);
   const schedule: ScheduleProvider | undefined = cfg.AERODATABOX_KEY
@@ -62,7 +73,11 @@ async function main() {
   loop("batcher", 10_000, () => batcher.tick(index.live, index.orders));
   loop("sweeper", 10 * 60_000, () => oracle.sweep(index.live));
   loop("seed-reclaim", 2 * 60_000, () => oracle.reclaimSeeds(index.live, (id) => index.isStale(id)));
-  if (!cfg.DEMO) loop("operator-split", 30 * 60_000, () => keepOperatorSplit(ctx.operator));
+  if (!cfg.DEMO) {
+    const op = ctx.operator;
+    setTimeout(() => void keepOperatorSplit(op).catch((e) => log.warn("operator split failed", { error: String(e) })), 20_000).unref();
+    loop("operator-split", 30 * 60_000, () => keepOperatorSplit(op));
+  }
 
   const shutdown = async () => {
     store.flush();

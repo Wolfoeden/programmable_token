@@ -117,7 +117,8 @@ export async function createChain(cfg: Config): Promise<ChainContext> {
     provider.getProtocolParameters().then((p) => (params = p)).catch(() => undefined);
   }, 10 * 60_000).unref();
   const newLucid = () => Lucid(provider, network, { presetProtocolParameters: params });
-  await splitOperatorFunds(operatorLucid);
+  // Splitting the operator funds runs in the background (keepOperatorSplit),
+  // so a slow or rate-limited chain service cannot block the start.
   log.info("chain ready", { network, operator: address });
   return {
     network,
@@ -152,30 +153,6 @@ export async function keepOperatorSplit(w: SerialWallet, wanted = 12): Promise<v
     return tx.complete({ presetWalletInputs: walletUtxos });
   });
   log.info("split operator funds into more UTxOs", { outputs: wanted, each, txHash: hash });
-}
-
-/**
- * The operator signs many transactions in a row (markets, resolutions,
- * batches). Each needs its own unspent outputs until the previous one is
- * confirmed, so a wallet with only a few UTxOs is split into several.
- */
-async function splitOperatorFunds(lucid: LucidEvolution, wanted = 12): Promise<void> {
-  const utxos = await lucid.wallet().getUtxos();
-  const pure = utxos.filter((u) => Object.keys(u.assets).length === 1);
-  if (pure.length >= wanted / 2) return;
-  const total = pure.reduce((a, u) => a + (u.assets.lovelace ?? 0n), 0n);
-  const each = (total * 8n) / 10n / BigInt(wanted);
-  if (each < 30_000_000n) {
-    log.warn("operator wallet holds few funds; transactions will wait for confirmations", { lovelace: total });
-    return;
-  }
-  const address = await lucid.wallet().address();
-  let tx = lucid.newTx();
-  for (let i = 0; i < wanted; i++) tx = tx.pay.ToAddress(address, { lovelace: each });
-  const signed = await (await tx.complete()).sign.withWallet().complete();
-  const hash = await signed.submit();
-  log.info("split operator funds into more UTxOs", { outputs: wanted, each, txHash: hash });
-  await lucid.awaitTx(hash);
 }
 
 export function decodeUtxo(cbor: string): UTxO {

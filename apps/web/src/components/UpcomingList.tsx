@@ -121,10 +121,10 @@ export function UpcomingList(p: UpcomingListProps) {
               <div className="upcoming-foot">Percentages are each side’s share of the pool (market-based, not a probability).</div>
             </>
           )}
-          {tab === "flights" && <div className="upcoming-head">Open or opening soon · from cruise altitude</div>}
+          {tab === "flights" && <div className="upcoming-head">Open for betting · from cruise altitude</div>}
           {tab === "flights" && openFlights.length === 0 && (
             <div className="upcoming-empty">
-              {p.status === "loading" ? "Loading flights …" : p.status === "ok" ? "No flight is open or opening soon right now." : "Flight data is not reachable right now."}
+              {p.status === "loading" ? "Loading flights …" : p.status === "ok" ? "No flight is open for betting right now." : "Flight data is not reachable right now."}
             </div>
           )}
           {tab === "flights" && (
@@ -159,7 +159,7 @@ export function UpcomingList(p: UpcomingListProps) {
             })}
           </ul>
           )}
-          {tab === "flights" && <div className="upcoming-foot">Arrival times are estimates from position and speed. Betting opens 60 min and closes 20 min before landing.</div>}
+          {tab === "flights" && <div className="upcoming-foot">Arrival times are estimates from position and speed. Betting closes at least 20 min before landing.</div>}
         </div>
       )}
     </div>

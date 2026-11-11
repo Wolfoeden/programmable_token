@@ -78,7 +78,7 @@ const errors: Record<string, string> = {
   unknown_route: "This flight's route is unknown.",
   no_callsign: "The aircraft is not sending a callsign.",
   aircraft_not_found: "Aircraft not visible right now.",
-  not_eligible: "Markets are only offered on flights landing at a live-stream airport within the next hour.",
+  not_eligible: "Predictions are only offered on flights inbound to a live-stream airport.",
   rate_limited: "Too many new markets, please try again later.",
   too_many_markets: "Too many markets are open right now.",
   schedule_unavailable: "No schedule provider configured.",

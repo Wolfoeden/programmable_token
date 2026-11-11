@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { api } from "../api";
 import { CLOSE_LEAD_MIN, estimateEta } from "@flightradar/core/eta";
 import { distanceKm } from "@flightradar/core/geo";
 import { webcamFor } from "@flightradar/core/webcams";
@@ -70,6 +71,37 @@ export function AircraftPanel(p: AircraftPanelProps) {
   const tooClose = !!etaMs && etaMs - now < (CLOSE_LEAD_MIN + 5) * 60_000;
   const unconfirmed = a?.confirmed === false;
 
+  // No market yet: show the one a first bet would create (Yes/No right away).
+  const [preview, setPreview] = useState<MarketDto | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  // While the user works with the preview card (stake, confirmation), keep it
+  // even when the market it created shows up in the list.
+  const [engaged, setEngaged] = useState(false);
+  useEffect(() => setEngaged(false), [p.hex]);
+  const wantPreview = (!landingMarket || engaged) && !!a?.airport && !tooClose;
+  useEffect(() => {
+    if (!wantPreview) {
+      setPreview(null);
+      return;
+    }
+    let alive = true;
+    const load = () => {
+      setPreviewLoading(true);
+      api
+        .preview(p.hex)
+        .then((r) => alive && setPreview(r.market))
+        .catch(() => alive && setPreview(null))
+        .finally(() => alive && setPreviewLoading(false));
+    };
+    load();
+    const id = setInterval(load, 60_000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [p.hex, wantPreview]);
+  const showPreview = !!preview && (engaged || !landingMarket);
+
   return (
     <aside className={`panel simple sheet-${sheet}`} aria-label="Flight">
       <div className="panel-head" onPointerDown={onDown} onPointerUp={onUp} onPointerCancel={() => (drag.current = null)}>
@@ -133,7 +165,7 @@ export function AircraftPanel(p: AircraftPanelProps) {
           </div>
         )}
 
-        {sorted.map((m) => (
+        {sorted.filter((m) => !(showPreview && m.kind === "landing_before")).map((m) => (
           <MarketCard
             key={m.id}
             market={m}
@@ -145,11 +177,26 @@ export function AircraftPanel(p: AircraftPanelProps) {
             {...(p.onVoid ? { onVoid: p.onVoid } : {})}
           />
         ))}
-        {!landingMarket &&
-          (a?.airport && !tooClose ? (
-            <button type="button" className="btn primary" disabled={p.busy} onClick={() => p.onCreate({ kind: "landing_before", hex: p.hex })}>
-              Predict this landing
-            </button>
+        {showPreview && preview ? (
+          <MarketCard
+            market={preview}
+            busy={p.busy}
+            simple
+            onPrepare={p.onPrepare}
+            onConfirm={async (bet) => {
+              const ok = await p.onConfirm(bet);
+              if (ok) setEngaged(false);
+              return ok;
+            }}
+            onEngage={() => {
+              setEngaged(true);
+              setSheet("full");
+            }}
+          />
+        ) : null}
+        {!landingMarket && !showPreview &&
+          (a?.airport && !tooClose && previewLoading ? (
+            <div className="pool-note">Loading the prediction …</div>
           ) : sorted.length === 0 ? (
             <div className="closed-box">
               <div>{a?.airport ? "Betting is closed" : "No prediction for this flight."}</div>

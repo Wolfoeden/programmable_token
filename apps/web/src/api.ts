@@ -61,10 +61,12 @@ export const api = {
   createMarket: (body: unknown) => post<{ marketId: string; txHash?: string; existing: boolean }>("/api/markets", body),
   departures: (icao: string) => request<DeparturesResponse>(`/api/airports/${icao}/departures`),
   jackpot: () => request<{ lovelace: string; outputs: number; address: string; sideBet: string }>("/api/jackpot"),
-  betTx: (w: WalletPayload, marketId: string, outcome: number, stake: bigint, side = false) =>
-    post<{ tx: string; quote: { payout: string; multiplier: number; probabilityAfter: number }; costs: BetCosts }>("/api/tx/bet", {
+  preview: (hex: string) => request<{ existing: string | null; market: MarketDto | null }>(`/api/aircraft/${hex}/preview`),
+  /** `target`: an existing market id, or "preview:<hex>" to create the market with this first bet. */
+  betTx: (w: WalletPayload, target: string, outcome: number, stake: bigint, side = false, threshold?: number) =>
+    post<{ marketId: string; tx: string; quote: { payout: string; multiplier: number; probabilityAfter: number }; costs: BetCosts }>("/api/tx/bet", {
       ...w,
-      marketId,
+      ...(target.startsWith("preview:") ? { hex: target.slice(8), ...(threshold !== undefined ? { threshold } : {}) } : { marketId: target }),
       outcome,
       stake: stake.toString(),
       side,

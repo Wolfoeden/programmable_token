@@ -73,6 +73,7 @@ export const t = {
 const errors: Record<string, string> = {
   too_close_to_landing: "Predictions close at least 20 minutes before the estimated landing, so this flight is too close for a new one.",
   not_offered: "This kind of prediction is not offered.",
+  line_changed: "The flight's arrival estimate moved too far from this line. Please look at the prediction again.",
   no_eta: "No arrival estimate for this flight. Is it heading for its destination?",
   unknown_destination: "Destination airport unknown.",
   unknown_route: "This flight's route is unknown.",

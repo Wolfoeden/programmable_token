@@ -31,7 +31,8 @@ export type ProposalError =
   | "already_departed"
   | "too_late"
   | "needs_two_flights"
-  | "same_flight";
+  | "same_flight"
+  | "line_changed";
 
 export type ProposalResult = { ok: true; proposal: Proposal } | { ok: false; error: ProposalError };
 
@@ -57,12 +58,17 @@ function etaFor(ac: Aircraft, flight: FlightRef, now: number): EtaEstimate | Pro
 }
 
 /** Over/under on touchdown time, line at the estimated arrival. */
-export function proposeLandingBefore(ac: Aircraft, flight: FlightRef, now: number): ProposalResult {
+/**
+ * `thresholdMs`: keep the line the user was shown (it must stay within 30
+ * minutes of the current estimate); otherwise the estimate rounded to 5 min.
+ */
+export function proposeLandingBefore(ac: Aircraft, flight: FlightRef, now: number, thresholdMs?: number): ProposalResult {
   const eta = etaFor(ac, flight, now);
   if (typeof eta === "string") return { ok: false, error: eta };
   const closeTime = closeBeforeLanding(eta);
   if (closeTime < now + 5 * MIN) return { ok: false, error: "too_close_to_landing" };
-  const threshold = roundTo(eta.etaMs, 5 * MIN);
+  if (thresholdMs !== undefined && (thresholdMs % (5 * MIN) !== 0 || Math.abs(thresholdMs - eta.etaMs) > 30 * MIN)) return { ok: false, error: "line_changed" };
+  const threshold = thresholdMs ?? roundTo(eta.etaMs, 5 * MIN);
   const pYes = bound(probabilityBefore(eta, threshold));
   return {
     ok: true,

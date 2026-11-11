@@ -278,7 +278,9 @@ export function App() {
     }
     setBusy(true);
     try {
-      const res = await api.betTx(await wallet.payload(), m.id, outcome, stake, side);
+      // A first bet creates the market with exactly the line shown in the preview.
+      const line = m.question.kind === "landing_before" ? Number(m.question.threshold) : undefined;
+      const res = await api.betTx(await wallet.payload(), m.id, outcome, stake, side, line);
       return { market: m, outcome, tx: res.tx, costs: res.costs, payout: res.quote.payout, multiplier: res.quote.multiplier };
     } catch (e) {
       toast("error", errorText(e));

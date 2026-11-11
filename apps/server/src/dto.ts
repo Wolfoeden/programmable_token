@@ -11,7 +11,8 @@ import {
 import type { MarketView, OrderView } from "@flightradar/chain";
 import type { Evidence, MarketMeta } from "./store.js";
 
-export type MarketPhase = "creating" | "open" | "closed" | "resolved" | "void";
+/** "preview": no market yet; the first bet creates it. */
+export type MarketPhase = "preview" | "creating" | "open" | "closed" | "resolved" | "void";
 
 export interface MarketDto {
   id: string;
@@ -90,6 +91,31 @@ export function marketDto(m: MarketView, now: number, orders: OrderView[], meta?
 }
 
 /** A market whose creation transaction is not confirmed yet. */
+/** A market that does not exist yet, as the first bet would create it. */
+export function previewMarketDto(hex: string, q: Question, pools: bigint[], closeTime: number, feeBps: bigint, seed: { probabilities: number[]; model: string }): MarketDto {
+  return {
+    id: `preview:${hex}`,
+    kind: q.kind,
+    question: q,
+    ...texts(q),
+    pools: pools.map(String),
+    total: String(parimutuel.total(pools)),
+    probabilities: parimutuel.impliedProbabilities(pools),
+    odds: parimutuel.marginalOdds(pools, feeBps),
+    pending: { orders: 0, stakes: pools.map(() => "0") },
+    closeTime,
+    resolveDeadline: 0,
+    claimDeadline: 0,
+    feeBps: Number(feeBps),
+    maxTotal: "0",
+    phase: "preview",
+    winner: null,
+    icao24: flightsOf(q).map((f) => f.icao24).filter(Boolean),
+    seed,
+    simulated: false,
+  };
+}
+
 export function pendingMarketDto(meta: MarketMeta): MarketDto {
   const pools = meta.seedLovelace.map((x) => BigInt(x));
   const q = meta.question;

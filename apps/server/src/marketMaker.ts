@@ -140,9 +140,22 @@ export class MarketMaker {
     return r.proposal;
   }
 
-  async landing(hex: string): Promise<CreatedMarket> {
+  /**
+   * What a new "lands before" market on this flight would look like, without
+   * creating it: question, seed pools from the model and betting close. If
+   * the market exists already, its id.
+   */
+  async preview(hex: string, thresholdMs?: number): Promise<{ existing: string } | { proposal: Proposal; seedPools: bigint[]; feeBps: bigint }> {
     const { ac, flight } = await this.flightFor(hex);
-    const proposal = this.unwrap(proposeLandingBefore(ac, flight, this.ctx.now()));
+    const proposal = this.unwrap(proposeLandingBefore(ac, flight, this.ctx.now(), thresholdMs));
+    const existing = this.findExisting(proposal.question);
+    if (existing) return { existing };
+    return { proposal, seedPools: parimutuel.seedPools(proposal.probabilities, BigInt(this.cfg.SEED_ADA) * ADA, ADA), feeBps: BigInt(this.cfg.FEE_BPS) };
+  }
+
+  async landing(hex: string, thresholdMs?: number): Promise<CreatedMarket> {
+    const { ac, flight } = await this.flightFor(hex);
+    const proposal = this.unwrap(proposeLandingBefore(ac, flight, this.ctx.now(), thresholdMs));
     this.tracker.ingest(flight, ac);
     return this.create(proposal, BigInt(this.cfg.SEED_ADA) * ADA, BigInt(this.cfg.MAX_TOTAL_ADA) * ADA, false);
   }

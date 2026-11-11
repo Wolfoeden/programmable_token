@@ -39,7 +39,7 @@ import type { AdsbSource } from "./adsb.js";
 import { decodeUtxo, encodeUtxo, type ChainContext } from "./chain.js";
 import type { ChainIndex } from "./chainIndex.js";
 import type { Config } from "./config.js";
-import { aircraftDto, marketDto, pendingMarketDto } from "./dto.js";
+import { aircraftDto, marketDto, pendingMarketDto, previewMarketDto } from "./dto.js";
 import type { MarketMaker } from "./marketMaker.js";
 import type { RouteSource } from "./routes.js";
 import type { ScheduleProvider } from "./schedule.js";
@@ -355,19 +355,48 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
     return m;
   };
 
+  /** The market a first bet on this flight would create (no market is created). */
+  app.get("/api/aircraft/:hex/preview", async (req) => {
+    const { hex } = z.object({ hex: z.string().regex(/^[0-9a-f]{6}$/i) }).parse(req.params);
+    const r = await s.maker.preview(hex.toLowerCase());
+    if ("existing" in r) return { existing: r.existing, market: null };
+    const p = r.proposal;
+    return toJson({
+      existing: null,
+      market: previewMarketDto(hex.toLowerCase(), p.question, r.seedPools, p.closeTime, r.feeBps, { probabilities: p.probabilities, model: p.model }),
+    });
+  });
+
   app.post("/api/tx/bet", async (req) => {
-    const body = WalletBody.extend({
-      marketId: MarketId,
+    const raw = WalletBody.extend({
+      marketId: MarketId.optional(),
+      /** Instead of marketId: bet on this flight; the market is created first if needed. */
+      hex: z.string().regex(/^[0-9a-f]{6}$/i).optional(),
+      /** With hex: the line the user saw in the preview (unix ms), kept for the new market. */
+      threshold: z.number().int().optional(),
       outcome: z.number().int().min(0).max(7),
       stake: z.string().regex(/^\d+$/),
       mode: z.enum(["order", "direct"]).default("order"),
       /** Opt-in side bet of 1 ADA into the jackpot (orders only). */
       side: z.boolean().default(false),
     }).parse(req.body);
-    const stake = BigInt(body.stake);
-    const side = body.side && body.mode === "order" ? SIDE_BET : 0n;
+    const stake = BigInt(raw.stake);
     if (stake < 1_000_000n) throw new HttpError(422, "stake_too_small", "Minimum stake is 1 ADA");
-    const lucid = await walletLucid(body);
+    const lucid = await walletLucid(raw);
+    // One step for the user: create the market on the first bet, then bet as
+    // an order against it right away (the batcher books it once confirmed).
+    let marketId = raw.marketId;
+    if (!marketId) {
+      if (!raw.hex) throw new HttpError(400, "bad_request", "marketId or hex is required");
+      const existing = await s.maker.preview(raw.hex.toLowerCase(), raw.threshold).then((r) => ("existing" in r ? r.existing : null));
+      if (existing) marketId = existing;
+      else {
+        if (!marketRequests.allow(req.ip)) throw new HttpError(429, "rate_limited", "Too many new markets, please try again later");
+        marketId = (await s.maker.landing(raw.hex.toLowerCase(), raw.threshold)).marketId;
+      }
+    }
+    const body = { ...raw, marketId, mode: raw.hex && !raw.marketId ? ("order" as const) : raw.mode };
+    const side = body.side && body.mode === "order" ? SIDE_BET : 0n;
     // A market still being confirmed takes bets as orders straight away.
     const pending = body.mode === "order" ? s.maker.pendingView(body.marketId) : undefined;
     const m = pending ?? requireMarket(body.marketId, body.mode === "direct");
@@ -401,6 +430,7 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
       });
     }
     return toJson({
+      marketId: m.datum.marketId,
       tx: tx.toCBOR(),
       quote: { payout: quote.payout, multiplier: quote.multiplier, probabilityAfter: quote.probabilityAfter },
       costs: {

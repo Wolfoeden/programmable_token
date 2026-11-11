@@ -239,6 +239,36 @@ describe("server pipeline (emulator, fake flight data)", () => {
     expect(await call("GET", `/api/operator/deposits?address=${opAddr}`)).toMatchObject({ count: 0 });
   });
 
+  it("one step: a first bet by flight creates the market and the order", async () => {
+    const LAS = airportByIcao("KLAS")!;
+    const LAX = airportByIcao("KLAX")!;
+    const p = destinationPoint(LAS, bearingDeg(LAS, LAX), 290);
+    const hex3 = "a1b2c4";
+    adsb.planes.set(hex3, { hex: hex3, callsign: "SWR9", lat: p.lat, lon: p.lon, altitudeFt: 22000, onGround: false, groundSpeedKt: 300, trackDeg: bearingDeg(p, LAS), verticalRateFpm: -1000, timestamp: ctx.now() });
+    const preview = await call<{ existing: string | null; market: { id: string; phase: string; probabilities: number[]; question: { threshold: number } } }>(
+      "GET",
+      `/api/aircraft/${hex3}/preview`,
+    );
+    expect(preview.market.phase).toBe("preview");
+    expect(preview.market.probabilities.reduce((a, b) => a + b, 0)).toBeCloseTo(1, 6);
+    const w = await call<{ address: string; utxos: string[] }>("GET", "/api/demo/wallets/carol/utxos");
+    // The line shown in the preview is the line of the market the bet creates.
+    const line = preview.market.question.threshold + 5 * 60_000; // even if the estimate moved a little since
+    const bet = await call<{ tx: string; marketId: string }>("POST", "/api/tx/bet", { ...w, hex: hex3, threshold: line, outcome: 0, stake: "3000000" });
+    const { witness } = await call<{ witness: string }>("POST", "/api/demo/wallets/carol/sign", { tx: bet.tx });
+    await call("POST", "/api/tx/submit", { tx: bet.tx, witness });
+    await block();
+    await batcher.tick(index.live, index.orders);
+    await block();
+    const { market } = await call<{ market: { phase: string; pools: string[]; question: { threshold: number } } }>("GET", `/api/markets/${bet.marketId}`);
+    expect(market.phase).toBe("open");
+    expect(market.question.threshold).toBe(line);
+    expect(market.pools.reduce((a, b) => a + BigInt(b), 0n)).toBe(23_000_000n);
+    // The preview now points at the existing market.
+    expect((await call<{ existing: string | null }>("GET", `/api/aircraft/${hex3}/preview`)).existing).toBe(bet.marketId);
+    adsb.planes.delete(hex3);
+  });
+
   it("takes a bet as an order while the market is still being confirmed", async () => {
     const LAS = airportByIcao("KLAS")!;
     const LAX = airportByIcao("KLAX")!;

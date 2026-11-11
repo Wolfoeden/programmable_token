@@ -1,7 +1,8 @@
 /** Shapes returned by the server API (see apps/server/src/dto.ts). */
 import type { FlightRef, Question } from "@flightradar/core/questions";
 
-export type MarketPhase = "creating" | "open" | "closed" | "resolved" | "void";
+/** "preview": no market yet; the first bet creates it. */
+export type MarketPhase = "preview" | "creating" | "open" | "closed" | "resolved" | "void";
 
 export interface MarketDto {
   id: string;

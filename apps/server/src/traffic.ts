@@ -7,6 +7,7 @@
 import { distanceKm, isShortHaul, landingWithinHour, onRoute, MOVEMENT_RADIUS_NM, webcamAirports, type Aircraft, type Airport, type Movement } from "@flightradar/core";
 import type { AdsbSource } from "./adsb.js";
 import type { RouteSource } from "./routes.js";
+import type { ShadowFlight, ShadowSample } from "./shadow.js";
 
 export interface Shown {
   aircraft: Aircraft;
@@ -75,6 +76,11 @@ export class CamTraffic {
   private lastClientAt = 0;
   private arrivals = new Map<string, Arrival>();
   private tracks = new Map<string, TrackPoint[]>();
+  private samples = new Map<string, { firstListedAt: number; list: ShadowSample[] }>();
+  /** Called once per flight when its arrival is decided (shadow log). */
+  onFinished?: (f: ShadowFlight) => void;
+  /** Keep refreshing without viewers (for the shadow log). */
+  alwaysOn = false;
   /** Airports refreshed at least once since the list went active. */
   private refreshed = new Set<string>();
   updatedAt = 0;
@@ -104,7 +110,7 @@ export class CamTraffic {
   }
 
   get active(): boolean {
-    return Date.now() - this.lastClientAt < IDLE_AFTER_MS;
+    return this.alwaysOn || Date.now() - this.lastClientAt < IDLE_AFTER_MS;
   }
 
   /** Refresh one airport. Call every 1.5 s or so. */
@@ -182,6 +188,7 @@ export class CamTraffic {
         ...(ac.type ? { type: ac.type } : {}),
       });
       this.record(ac);
+      this.sample(s, airport);
     }
     for (const a of this.arrivals.values()) {
       if (a.airport !== airport.icao || listed.has(a.hex) || a.status === "landed" || a.status === "lost") continue;
@@ -197,6 +204,7 @@ export class CamTraffic {
           a.status = "landed";
           a.landedAt = ac.timestamp;
           a.endedAt = now;
+          this.finish(a, "landed");
           continue;
         }
         a.status = "final";
@@ -206,16 +214,61 @@ export class CamTraffic {
       if (now - a.lastSeenAt > LOST_AFTER_MS || (ac && !ac.onGround && now - a.lastSeenAt < 60_000 && distanceKm(ac, airport) > 150)) {
         a.status = "lost";
         a.endedAt = now;
+        this.finish(a, "lost");
       }
     }
     // Off the list and airborne for too long, or long finished: forget.
     for (const [hex, a] of this.arrivals) {
       const gone = (a.endedAt !== undefined && now - a.endedAt > KEEP_ENDED_MS) || (a.status === "final" && now - a.lastSeenAt > FINAL_GIVE_UP_MS);
       if (gone) {
+        if (a.status === "final") this.finish(a, "gave_up");
         this.arrivals.delete(hex);
         this.tracks.delete(hex);
       }
     }
+  }
+
+  private sample(s: Shown, airport: Airport): void {
+    const ac = s.aircraft;
+    const rec = this.samples.get(ac.hex) ?? { firstListedAt: ac.timestamp, list: [] };
+    const last = rec.list[rec.list.length - 1];
+    if (!last || ac.timestamp - last.t >= 30_000) {
+      rec.list.push({
+        t: ac.timestamp,
+        distKm: Math.round(distanceKm(ac, airport) * 10) / 10,
+        ...(ac.altitudeFt !== undefined ? { altFt: ac.altitudeFt } : {}),
+        ...(ac.groundSpeedKt !== undefined ? { gsKt: ac.groundSpeedKt } : {}),
+        ...(ac.verticalRateFpm !== undefined ? { vrFpm: ac.verticalRateFpm } : {}),
+        etaMs: s.etaMs,
+        sigmaMs: s.etaSigmaMs,
+      });
+      if (rec.list.length > 200) rec.list.shift();
+    }
+    this.samples.set(ac.hex, rec);
+  }
+
+  private finish(a: Arrival, status: ShadowFlight["outcome"]["status"]): void {
+    const rec = this.samples.get(a.hex);
+    this.samples.delete(a.hex);
+    if (!rec || rec.list.length === 0 || !this.onFinished) return;
+    this.onFinished({
+      v: 1,
+      hex: a.hex,
+      airport: a.airport,
+      firstListedAt: rec.firstListedAt,
+      samples: rec.list,
+      outcome: { status, lastSeenAt: a.lastSeenAt, ...(a.landedAt !== undefined ? { landedAt: a.landedAt } : {}) },
+      ...(a.callsign ? { callsign: a.callsign } : {}),
+      ...(a.flightNumber ? { flightNumber: a.flightNumber } : {}),
+      ...(a.type ? { type: a.type } : {}),
+      ...(a.origin ? { origin: a.origin } : {}),
+    });
+  }
+
+  /** Model estimate for a listed flight right now (for the bet log). */
+  estimate(hex: string): { etaMs: number; sigmaMs: number } | undefined {
+    const s = this.list().find((x) => x.aircraft.hex === hex);
+    return s ? { etaMs: s.etaMs, sigmaMs: s.etaSigmaMs } : undefined;
   }
 
   private record(ac: Aircraft): void {

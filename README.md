@@ -1,6 +1,6 @@
 # flightradar.fun
 
-Live-Flugkarte mit Wettmärkten auf Cardano. Man klickt ein Flugzeug an und setzt darauf, wann es landet, ob es sich verspätet oder welches von mehreren Flugzeugen zuerst landet. An Flughäfen gibt es Märkte auf Ausfälle. Die Quoten ergeben sich aus den Pools der Wettenden. Gestartet wird jeder Markt mit einer Status-quo-Wahrscheinlichkeit aus einem Ankunftsmodell oder aus veröffentlichten Pünktlichkeits- und Ausfallquoten.
+Live-Flugkarte mit Wettmärkten auf Cardano. Man klickt ein Flugzeug an und setzt darauf, ob es vor einer bestimmten Uhrzeit landet. Die Quoten ergeben sich aus den Pools der Wettenden. Gestartet wird jeder Markt mit einer Status-quo-Wahrscheinlichkeit aus einem Ankunftsmodell oder aus veröffentlichten Pünktlichkeits- und Ausfallquoten.
 
 Jeder Einsatz prägt einen programmierbaren Positions-Token nach CIP-68. Ein Aiken-Vertrag erzwingt die Pool-Buchhaltung: Einzahlung gleich geprägte Token, verbrannte Gewinner-Token gleich Auszahlung zum Pool-Kurs.
 
@@ -30,18 +30,44 @@ Ein Flug zählt, wenn er auf den Flughafen zufliegt, laut Routendaten dort lande
 
 - **Flug bleibt ausgewählt**: Verlässt der gewählte Flug die Liste, bleiben Panel, Stream und Karte bei ihm. Der Server verfolgt ihn weiter. Die Landung gilt als bestätigt, sobald die erste ADS-B-Bodenmeldung im Umkreis von 6 km um den Flughafen eintrifft. Kommt 5 Minuten lang weder Bodenmeldung noch Signal, zeigt die Seite „nicht bestätigt". Zum nächsten Flug wechselt die Seite nur auf Klick.
 - **Now landing**: Der Stream des Zielflughafens bekommt viel Platz. Daneben stehen eine maßstäbliche Anflugkarte mit der aufgezeichneten Spur, Flugnummer, Flugzeugtyp und die geschätzte Restzeit. Nach der Landung bietet die Ansicht den nächsten Anflug an, wechselt aber nicht selbst.
-- **Who lands first?**: Hier wählt man zwei oder drei ankommende Flüge. Die Seite schlägt dazu ein knappes Paar am selben Flughafen vor. Die Spuren erscheinen farbig auf der Karte und in der Rennansicht. Man setzt auf den Markt und sieht danach zwei getrennte Ergebnisse: die beobachtete Reihenfolge der Bodenmeldungen und das vom Oracle abgerechnete Ergebnis.
 
 Die Daten dafür liefert `/api/aircraft` im Feld `arrivals`. Die Spuren bis zu vier Flügen stehen unter `/api/tracks?hex=…`.
+
+### Angeboten wird nur „landet vor T"
+
+- **Wettschluss**: spätestens 20 Minuten vor der geschätzten Landung (`CLOSE_LEAD_MIN` in `packages/core/src/eta.ts`). Kurz vor dem Aufsetzen kennt jeder, der die Anflugkette sieht, den Ausgang besser als unser Modell.
+- **Schwelle**: Das Haus legt sie fest, nämlich die geschätzte Ankunft gerundet auf 5 Minuten. Nutzer können nur diesen Markt anlegen, keine eigenen Schwellen.
+- **Abgeschaltet**: Rennen, weil Spieler genau die Paare wählen würden, bei denen das Modell falsch liegt. Verspätungs-Märkte mit simuliertem Flugplan, weil das eine erfundene Planzeit wäre. In `MarketMaker` lassen sie sich nur für Tests wieder einschalten.
+
+## Schattenbetrieb
+
+Bevor es feste Quoten gibt, sammelt der Server Daten, um Marge, Wettschluss und Limits zu bestimmen. Alles landet in `DATA_DIR/shadow` als JSON-Zeilen, eine Datei pro Tag:
+
+- `flights-*.jsonl`: Für jeden gelisteten Flug etwa alle 30 Sekunden die Position und die Modellschätzung samt Unsicherheit. Dazu der Ausgang: Landezeit laut erster Bodenmeldung, Signal verloren oder aufgegeben.
+- `bets-*.jsonl`: jede gebaute Wette mit Zeit, Markt, Seite, Einsatz, angezeigter Quote, Modellschätzung zu diesem Zeitpunkt und einem gesalzenen Hash der Wallet-Adresse. Dazu Zeilen `submitted` für tatsächlich eingereichte Wetten.
+
+Mit `SHADOW_ALWAYS_ON=1` verfolgt der Server Flüge auch ohne Besucher. Mit `ADMIN_TOKEN` lassen sich die Dateien unter `/api/admin/shadow` herunterladen. Die Auswertung:
+
+```bash
+npm run shadow:report -w @flightradar/server -- data/shadow                        # lokal
+npm run shadow:report -w @flightradar/server -- https://flightradar.fun <ADMIN_TOKEN> # vom Server
+```
+
+Der Bericht zeigt:
+- **ETA-Fehler**: nach Vorlaufzeit, mit Verzerrung und Trefferquote im ±1σ- und ±2σ-Band.
+- **Kalibrierung**: Modellwahrscheinlichkeit zum Wettschluss gegen die tatsächliche Häufigkeit, dazu die Marge, ab der keine Seite mehr Gewinn verspricht.
+- **Besser informierter Spieler**: Er weiß 5, 10 oder 15 Minuten mehr als das Modell und wettet zum Schlusskurs. Gezeigt wird, was er bei welcher Marge verdient hätte.
+- **Echte Spieler**: wann gewettet wurde und was das Haus mit diesen Wetten bei festen Modellquoten mit verschiedenen Margen verdient oder verloren hätte.
+
+Schon die synthetischen Tests zeigen das Kernproblem: Ein Spieler mit 5 Minuten Wissensvorsprung bleibt auch bei 25 % Marge im Plus. Eine Marge dünnt nur seine Wetten aus. Gegen ihn helfen nur ein früher Wettschluss und Limits.
 
 ## Was es gibt
 
 | Markt | Frage | Daten für die Entscheidung | Startquote aus |
 |---|---|---|---|
 | Landezeit | Landet LH400 vor 18:25 UTC in EDDF? | ADS-B: Aufsetzzeitpunkt am Ziel | ETA-Modell |
-| Verspätung | Landet LH400 mehr als 15 Min. nach Plan? | ADS-B plus Planzeit vom Flugplan-Anbieter | Pünktlichkeitsstatistik oder ETA |
-| Ausfall | Fällt LH400 am 2026-11-03 aus? | Status vom Flugplan-Anbieter, Start per ADS-B | Ausfallquote der Region |
-| Rennen | Wer landet zuerst: LH400 oder BA902? | ADS-B: Aufsetzzeitpunkte | ETA-Modell, 2 bis 4 Flüge |
+
+Verspätungs-, Ausfall- und Rennmärkte kann der Vertrag weiterhin abbilden, die Seite bietet sie aber nicht an.
 
 Landet ein Flug woanders oder ist bis zur Frist keine Landung beobachtbar, wird annulliert, und alle Einsätze werden 1:1 erstattet. Das Oracle speichert zu jeder Entscheidung die Beobachtungen als Beleg (`DATA_DIR/evidence/<market>.json`), und die API liefert sie unter `/api/markets/<id>` aus.
 
@@ -100,7 +126,7 @@ Die Emulator-Tests führen die echten kompilierten Skripte aus: Markt anlegen, d
 
 ## Testnetz-Betrieb (Preprod)
 
-1. Operator-Wallet anlegen und am [Preprod-Faucet](https://docs.cardano.org/cardano-testnets/tools/faucet) mit Test-ADA füllen. Für viele parallele Märkte die Mittel auf mehrere UTxOs verteilen.
+1. Operator-Wallet anlegen, auf dem eigenen Rechner mit `npm run keygen -w @flightradar/server -- Preprod`, und am [Preprod-Faucet](https://docs.cardano.org/cardano-testnets/tools/faucet) mit Test-ADA füllen. Für viele parallele Märkte die Mittel auf mehrere UTxOs verteilen.
 2. `apps/server/.env.example` nach `.env` kopieren und `OPERATOR_SEED` eintragen; optional `BLOCKFROST_PROJECT_ID`, sonst Koios ohne Schlüssel.
 3. Web-App bauen und vom Server ausliefern lassen:
 

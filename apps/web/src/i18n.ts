@@ -25,9 +25,6 @@ export const t = {
   noMarkets: "No market for this flight yet.",
   openLanding: "Open landing-time market",
   openDelay: "Open delay market",
-  startRace: "Start a race",
-  raceBanner: (n: number) => (n === 1 ? "Race: pick one or more other aircraft on the map." : `Race with ${n} aircraft`),
-  raceGo: "Open race",
   cancel: "Cancel",
   stake: "Stake",
   placeBet: "Bet",
@@ -73,7 +70,8 @@ export const t = {
 };
 
 const errors: Record<string, string> = {
-  too_close_to_landing: "Too close to landing for a new market.",
+  too_close_to_landing: "Predictions close at least 20 minutes before the estimated landing, so this flight is too close for a new one.",
+  not_offered: "This kind of prediction is not offered.",
   no_eta: "No arrival estimate for this flight. Is it heading for its destination?",
   unknown_destination: "Destination airport unknown.",
   unknown_route: "This flight's route is unknown.",
@@ -91,10 +89,7 @@ const errors: Record<string, string> = {
   cap_reached: "This market has reached its limit.",
   nothing_to_claim: "Nothing to claim.",
   market_not_found: "Market not confirmed yet, please wait a moment.",
-  race_size: "A race needs 2 to 4 aircraft.",
   demo_real_wallet: "This site runs in demo mode on a simulated blockchain, so coins from a real wallet don't exist here. Disconnect and choose a demo wallet (Alice, Bob or Carol).",
-  needs_two_flights: "A race needs at least two aircraft.",
-  same_flight: "An aircraft cannot race itself.",
   too_late: "Too late for this flight.",
 };
 

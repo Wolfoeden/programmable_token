@@ -1,3 +1,4 @@
+import { CLOSE_LEAD_MIN } from "@flightradar/core/eta";
 import { utcClock } from "../format";
 import type { MarketDto } from "../types";
 
@@ -16,7 +17,7 @@ export function RulesPanel({ m }: { m: MarketDto }) {
       <summary>Rules &amp; settlement</summary>
       <h4>When betting ends</h4>
       <p>
-        Betting closes at <strong>{m.closeTime ? dateTime(m.closeTime) : "–"}</strong>. Bets go in as orders that a batcher books into the pool. It
+        Betting closes at <strong>{m.closeTime ? dateTime(m.closeTime) : "–"}</strong>, at least {CLOSE_LEAD_MIN} minutes before the estimated landing. Bets go in as orders that a batcher books into the pool. It
         books orders only until 1 minute before close. An order not booked by then is returned after close, minus the 0.4 ₳ batcher fee; the 2 ₳
         deposit comes back.
       </p>

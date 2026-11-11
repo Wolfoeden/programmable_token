@@ -6,7 +6,7 @@
 import type { Aircraft } from "./aircraft.js";
 import { airportByIcao } from "./airports.js";
 import { cancellationRate, touchdownDelayExceedance } from "./baseRates.js";
-import { estimateEta, probabilityBefore, raceProbabilities, type EtaEstimate } from "./eta.js";
+import { CLOSE_LEAD_MIN, estimateEta, probabilityBefore, raceProbabilities, type EtaEstimate } from "./eta.js";
 import type { FlightRef, Question } from "./questions.js";
 import { clamp } from "./stats.js";
 
@@ -40,8 +40,9 @@ const bound = (p: number) => clamp(p, 0.02, 0.98);
 
 /** Bets close a bit before landing: 10 min or 30 % of the remaining time,
  * rounded down to the full minute (on-chain times are integers). */
+
 function closeBeforeLanding(eta: EtaEstimate): number {
-  return Math.floor((eta.etaMs - Math.max(10 * MIN, 0.3 * eta.remainingMin * MIN)) / MIN) * MIN;
+  return Math.floor((eta.etaMs - Math.max(CLOSE_LEAD_MIN * MIN, 0.3 * eta.remainingMin * MIN)) / MIN) * MIN;
 }
 
 function roundTo(ms: number, step: number): number {

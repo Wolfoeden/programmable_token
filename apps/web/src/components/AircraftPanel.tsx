@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { estimateEta } from "@flightradar/core/eta";
+import { CLOSE_LEAD_MIN, estimateEta } from "@flightradar/core/eta";
 import { distanceKm } from "@flightradar/core/geo";
 import { webcamFor } from "@flightradar/core/webcams";
 import { ago, bothZones, feet, fpm, knots } from "../format";
@@ -21,7 +21,6 @@ export interface AircraftPanelProps {
   onPrepare: MarketCardProps["onPrepare"];
   onConfirm: MarketCardProps["onConfirm"];
   onCreate: (body: unknown) => Promise<unknown>;
-  onStartRace: () => void;
   /** Set when the flight has left the list: what happened since. */
   arrivalNote?: string | null;
   onClose: () => void;
@@ -46,6 +45,8 @@ export function AircraftPanel(p: AircraftPanelProps) {
   const landingMarket = p.markets.find((m) => m.kind === "landing_before" && (m.phase === "open" || m.phase === "creating"));
   const sorted = [...p.markets].sort((x, y) => (x.phase === "open" ? -1 : 0) - (y.phase === "open" ? -1 : 0));
   const hasCam = !!webcamFor(destIcao);
+  // A new market needs its close (ETA − 20 min) at least 5 minutes ahead.
+  const tooClose = !!etaMs && etaMs - now < (CLOSE_LEAD_MIN + 5) * 60_000;
 
   const openPrediction = async () => {
     if (!landingMarket) await p.onCreate({ kind: "landing_before", hex: p.hex });
@@ -132,10 +133,13 @@ export function AircraftPanel(p: AircraftPanelProps) {
 
         {hasCam && destIcao && <LiveStream icao={destIcao} />}
 
-        <button type="button" className="btn primary" disabled={p.busy || !a?.airport} onClick={openPrediction}>
-          {landingMarket ? "Open demo prediction" : "Create demo prediction for this flight"}
+        <button type="button" className="btn primary" disabled={p.busy || !a?.airport || (!landingMarket && tooClose)} onClick={openPrediction}>
+          {landingMarket ? "Open prediction" : "Create prediction for this flight"}
         </button>
         {!a?.airport && <div className="pool-note">Predictions are only offered while this flight is in the list of flights landing soon.</div>}
+        {a?.airport && !landingMarket && tooClose && (
+          <div className="pool-note">Predictions close {CLOSE_LEAD_MIN} minutes before the estimated landing, so this flight is too close for a new one.</div>
+        )}
 
         <div className="section-title" ref={marketsRef}>
           {t.markets}
@@ -150,9 +154,6 @@ export function AircraftPanel(p: AircraftPanelProps) {
               {t.openDelay}
             </button>
           )}
-          <button type="button" className="btn flat" disabled={!a?.airport} onClick={p.onStartRace}>
-            {t.startRace}
-          </button>
         </div>
         <LegalLinks className="legal-links panel-legal" />
       </div>

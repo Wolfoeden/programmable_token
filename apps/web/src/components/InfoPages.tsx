@@ -49,7 +49,7 @@ function Privacy() {
   return (
     <>
       <h2>Privacy</h2>
-      <Missing items={["Controller (name, address, contact)", "Legal bases for each processing", "Retention of hosting logs at Render and Netlify", "Data processing agreements with the hosts", "How to exercise data-subject rights"]} />
+      <Missing items={["Controller (name, address, contact)", "Legal bases for each processing", "Retention of hosting logs at Render and Netlify", "Retention period of the bet log (model evaluation)", "Data processing agreements with the hosts", "How to exercise data-subject rights"]} />
       <h3>What this site actually does with data</h3>
       <p>This is a technical description of the data flows in the current code, not a complete privacy policy.</p>
       <ul>
@@ -67,8 +67,11 @@ function Privacy() {
         </li>
         <li>
           <strong>Our server.</strong> When you create a prediction, your IP address is kept in memory for up to one hour to limit requests. When you
-          bet, claim or cancel, your wallet address and the list of your wallet's unspent outputs are sent to build the transaction; the app does not
-          store them. Signed transactions are submitted to the blockchain; in demo mode that blockchain is simulated in the server's memory.
+          bet, claim or cancel, your wallet address and the list of your wallet's unspent outputs are sent to build the transaction. Signed
+          transactions are submitted to the blockchain; in demo mode that blockchain is simulated in the server's memory, on the testnet it is public.
+          To evaluate the prediction model, the server logs each bet: time, prediction, side, stake, the odds shown, the model estimate at that time
+          and a salted hash of the wallet address (not the address itself). It also logs the model's estimates and the observed landing for every
+          listed flight; these contain no visitor data.
         </li>
         <li>
           <strong>Your browser.</strong> The app stores the name of the last wallet you chose in local storage (key <code>frf.wallet</code>). It sets
@@ -93,9 +96,13 @@ function Terms() {
       <Missing items={["Terms of use", "Operator details (see Imprint)", "Legal review of the demo and of any future real-money function"]} />
       <h3>Facts about this demo</h3>
       <ul>
-        <li>This is a demo. Stakes are play money on a simulated blockchain and have no monetary value. There is no real-money function.</li>
-        <li>The demo has not been legally reviewed or approved.</li>
-        <li>Demo balances and positions are lost when the server restarts. The server may be unavailable at times.</li>
+        <li>
+          This is a test. Stakes have no monetary value: in demo mode they are play money on a simulated blockchain, on the Cardano Preprod testnet
+          they are test ADA from the public faucet. There is no real-money function.
+        </li>
+        <li>It has not been legally reviewed or approved.</li>
+        <li>In demo mode, balances and positions are lost when the server restarts. The server may be unavailable at times.</li>
+        <li>Predictions close at least 20 minutes before the estimated landing. Bets are logged to evaluate the model (see Privacy).</li>
         <li>
           Only short flights (departure about an hour away at most) that land within the next hour at one of these airports can get a prediction:{" "}
           {WEBCAMS.map((w) => w.name).join(", ")}.

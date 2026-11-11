@@ -14,11 +14,23 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22"
-      # Demo mode: simulated chain in memory, play money, live flight data.
-      # For Preprod remove DEMO and set OPERATOR_SEED (and optionally
-      # BLOCKFROST_PROJECT_ID) in the Render dashboard.
-      - key: DEMO
+      # Cardano Preprod testnet (test ADA, no monetary value). For the
+      # in-memory demo instead, add DEMO=1 and drop the three secrets below.
+      - key: NETWORK
+        value: Preprod
+      # Operator wallet: create with `npm run keygen -w @flightradar/server`,
+      # fund at the Preprod faucet, paste the seed in the Render dashboard.
+      - key: OPERATOR_SEED
+        sync: false
+      # Optional; without it the server uses Koios.
+      - key: BLOCKFROST_PROJECT_ID
+        sync: false
+      # Shadow log: follow listed flights even without viewers, and allow
+      # downloading the log (npm run shadow:report -- <url> <token>).
+      - key: SHADOW_ALWAYS_ON
         value: "1"
+      - key: ADMIN_TOKEN
+        generateValue: true
       - key: WEB_DIST
         value: ../web/dist
       - key: TRUST_PROXY

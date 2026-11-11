@@ -5,7 +5,7 @@ import type { Feature as GeoFeature, FeatureCollection, Point } from "geojson";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { destinationPoint, KM_PER_NM } from "@flightradar/core/geo";
 import { api } from "../api";
-import type { AircraftDto, AirportDto, Arrival, DataStatus, TrackPoint } from "../types";
+import type { AircraftDto, AirportDto, Arrival, DataStatus } from "../types";
 import { greatCircle } from "./greatCircle";
 import { diamondImage, planeImage, ringImage } from "./icons";
 
@@ -14,18 +14,14 @@ import { diamondImage, planeImage, ringImage } from "./icons";
 setWorkerUrl(workerUrl);
 
 const STYLE_URL = "https://tiles.openfreemap.org/styles/dark";
-const RACE_COLORS = ["#5aa9ff", "#ff8a3d", "#c084fc", "#3ddc97"];
 
 export interface MapViewProps {
   selectedHex: string | null;
-  raceHexes: string[];
   destination: AirportDto | null;
   onAircraftClick: (hex: string) => void;
   onAirportClick: (icao: string) => void;
   onBackgroundClick: () => void;
   onAircraftUpdate: (list: AircraftDto[], arrivals: Arrival[]) => void;
-  /** Recorded paths of the race flights, drawn in their race colours. */
-  raceTracks?: Record<string, TrackPoint[]>;
   /** Data state after every poll: server status, or "error" if the server could not be reached. */
   onStatus: (s: { status: DataStatus; updatedAt: number | null; at: number }) => void;
   flyTo: { lat: number; lon: number; zoom?: number; key: number } | null;
@@ -76,7 +72,6 @@ export function MapView(props: MapViewProps) {
       map.addSource("airports", { type: "geojson", data: empty });
       map.addSource("origins", { type: "geojson", data: empty });
       map.addSource("flows", { type: "geojson", data: empty });
-      map.addSource("race-tracks", { type: "geojson", data: empty });
       // Where each shown flight came from (dashed) and where it goes (faint).
       map.addLayer({
         id: "flows-flown",
@@ -115,13 +110,6 @@ export function MapView(props: MapViewProps) {
         type: "line",
         source: "route",
         paint: { "line-color": "#ffc53d", "line-width": 1.5, "line-opacity": 0.6, "line-dasharray": [2, 2] },
-      });
-      map.addLayer({
-        id: "race-tracks",
-        type: "line",
-        source: "race-tracks",
-        layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": ["get", "color"], "line-width": 3, "line-opacity": 0.9 },
       });
       map.addLayer({
         id: "trail",
@@ -204,8 +192,6 @@ export function MapView(props: MapViewProps) {
             "case",
             ["==", ["get", "sel"], 1],
             "#ffffff",
-            [">=", ["get", "race"], 0],
-            ["match", ["get", "race"], 0, RACE_COLORS[0]!, 1, RACE_COLORS[1]!, 2, RACE_COLORS[2]!, RACE_COLORS[3]!],
             ["==", ["get", "ground"], 1],
             "#7d8794",
             ["==", ["get", "phase"], "landing"],
@@ -304,14 +290,13 @@ export function MapView(props: MapViewProps) {
       const src = map.getSource("aircraft") as GeoJSONSource | undefined;
       if (!src) return;
       const now = Date.now();
-      const { selectedHex, raceHexes } = propsRef.current;
+      const { selectedHex } = propsRef.current;
       const features: Feature[] = [];
       let selectedPos: [number, number] | null = null;
       for (const a of aircraft.current.values()) {
         const pos = extrapolate(a, now);
         const sel = a.hex === selectedHex ? 1 : 0;
         if (sel) selectedPos = pos;
-        const race = raceHexes.indexOf(a.hex);
         features.push({
           type: "Feature",
           geometry: { type: "Point", coordinates: pos },
@@ -325,8 +310,7 @@ export function MapView(props: MapViewProps) {
             markets: a.markets ?? 0,
             phase: a.phase ?? "",
             sel,
-            race,
-            sort: sel ? 3 : race >= 0 ? 2 : a.markets ? 1 : 0,
+            sort: sel ? 3 : a.markets ? 1 : 0,
           },
         });
       }
@@ -363,18 +347,6 @@ export function MapView(props: MapViewProps) {
             ? [{ type: "Feature", geometry: { type: "LineString", coordinates: [...t.points, selectedPos] }, properties: {} }]
             : [],
       });
-      const tracks = propsRef.current.raceTracks ?? {};
-      (map.getSource("race-tracks") as GeoJSONSource | undefined)?.setData({
-        type: "FeatureCollection",
-        features: raceHexes.flatMap((hex, i) => {
-          const pts: [number, number][] = (tracks[hex] ?? []).map((p) => [p[0], p[1]]);
-          const live = aircraft.current.get(hex);
-          if (live) pts.push(extrapolate(live, now));
-          return pts.length > 1
-            ? [{ type: "Feature" as const, geometry: { type: "LineString" as const, coordinates: pts }, properties: { color: RACE_COLORS[i % RACE_COLORS.length]! } }]
-            : [];
-        }),
-      });
       const dest = propsRef.current.destination;
       (map.getSource("route") as GeoJSONSource).setData({
         type: "FeatureCollection",
@@ -400,7 +372,7 @@ export function MapView(props: MapViewProps) {
     const a = sel ? aircraft.current.get(sel) : undefined;
     trail.current = { hex: sel, points: a ? [[a.lon, a.lat]] : [] };
     (mapRef as { render?: () => void }).render?.();
-  }, [props.selectedHex, props.raceHexes.join(","), props.destination?.icao, props.raceTracks]);
+  }, [props.selectedHex, props.destination?.icao]);
 
   useEffect(() => {
     if (!props.flyTo || !mapRef.current) return;

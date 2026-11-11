@@ -89,3 +89,11 @@ export function raceProbabilities(etas: readonly EtaEstimate[], samples = 20_000
   }
   return wins.map((w) => w / samples);
 }
+
+/**
+ * Predictions close this long before the estimated landing at the latest.
+ * Close to touchdown the outcome is nearly known to anyone watching the
+ * approach sequence, while our model does not get much better: late bets
+ * would be informed bets against the house.
+ */
+export const CLOSE_LEAD_MIN = 20;

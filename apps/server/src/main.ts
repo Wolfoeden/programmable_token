@@ -11,6 +11,7 @@ import { RouteClient } from "./routes.js";
 import { AeroDataBox, SimulatedSchedule, type ScheduleProvider } from "./schedule.js";
 import { Store } from "./store.js";
 import { Tracker } from "./tracker.js";
+import { ShadowLog } from "./shadow.js";
 import { CamTraffic } from "./traffic.js";
 import { log } from "./util.js";
 
@@ -27,13 +28,16 @@ async function main() {
   const store = new Store(cfg.DATA_DIR);
   const tracker = new Tracker(adsb);
   const traffic = new CamTraffic(adsb, routes);
+  const shadow = new ShadowLog(cfg.DATA_DIR);
+  traffic.onFinished = (f) => shadow.flight(f);
+  traffic.alwaysOn = cfg.SHADOW_ALWAYS_ON;
   const index = new ChainIndex(ctx);
   const maker = new MarketMaker(cfg, ctx, index, adsb, routes, schedule, store, tracker, traffic);
   const oracle = new Oracle(ctx, tracker, schedule, store);
   const batcher = new Batcher(ctx);
 
   await index.refresh();
-  const app = await buildApi({ cfg, ctx, index, adsb, routes, schedule, store, maker, traffic, tracker });
+  const app = await buildApi({ cfg, ctx, index, adsb, routes, schedule, store, maker, traffic, tracker, shadow });
   await app.listen({ port: cfg.PORT, host: cfg.HOST });
   log.info(`listening on http://${cfg.HOST}:${cfg.PORT}`, { demo: cfg.DEMO, network: ctx.network, schedule: schedule?.name ?? "none" });
 

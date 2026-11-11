@@ -8,7 +8,6 @@ import { FlightSwitcher } from "./components/FlightSwitcher";
 import { INFO_PAGES, InfoDialog, type InfoPage } from "./components/InfoPages";
 import { MarketCard, type PreparedBet } from "./components/MarketCard";
 import { PortfolioPanel } from "./components/PortfolioPanel";
-import { RacePanel } from "./components/RacePanel";
 import { nextApproach, WatchView } from "./components/WatchView";
 import { flightName, flightState, stateText } from "./arrivals";
 import { useNow } from "./hooks";
@@ -17,7 +16,7 @@ import { WalletDialog } from "./components/WalletDialog";
 import { usePoll } from "./hooks";
 import { errorText, t } from "./i18n";
 import { MapView } from "./map/MapView";
-import type { AircraftDetail, AircraftDto, Arrival, DataStatus, MarketDto, TrackPoint } from "./types";
+import type { AircraftDetail, AircraftDto, Arrival, DataStatus, MarketDto } from "./types";
 import { connectBrowserWallet, demoWallet, signAndSubmit, signBuilt, type AppWallet, type WalletOption } from "./wallet";
 
 type Selection = { kind: "aircraft"; hex: string } | { kind: "airport"; icao: string } | { kind: "market"; id: string } | { kind: "portfolio" } | null;
@@ -57,10 +56,6 @@ export function App() {
   const marketList = markets.data?.markets ?? [];
   const [selection, setSelection] = useState<Selection>(null);
   const [detail, setDetail] = useState<AircraftDetail | null>(null);
-  const [race, setRace] = useState<{ hexes: string[]; marketId: string | null } | null>(null);
-  const [raceTracks, setRaceTracks] = useState<Record<string, TrackPoint[]>>({});
-  const raceHexes = race?.hexes ?? [];
-  const racePicking = !!race && !race.marketId;
   const [watch, setWatch] = useState<{ hex: string | null } | null>(null);
   const [arrivals, setArrivals] = useState<Arrival[]>([]);
   const now = useNow(5000);
@@ -139,17 +134,16 @@ export function App() {
     if (health?.demo && id?.startsWith("demo:") && !wallet) setWallet(demoWallet(id.slice(5)));
   }, [health?.demo]);
 
-  // Escape closes the panel or leaves race mode.
+  // Escape closes watch mode or the panel.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || walletDialog || about || infoPage) return;
       if (watch) setWatch(null);
-      else if (race) setRace(null);
       else setSelection(null);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [race, watch, walletDialog, about, infoPage]);
+  }, [watch, walletDialog, about, infoPage]);
 
   const onAircraftUpdate = useCallback((list: AircraftDto[], arr: Arrival[]) => {
     aircraftRef.current = list;
@@ -174,18 +168,11 @@ export function App() {
 
   const onAircraftClick = useCallback(
     (hex: string) => {
-      if (racePicking) {
-        // Only flights landing soon at a live-stream airport can race.
-        if (!flightsRef.current.some((f) => f.hex === hex)) return;
-        setRace((r) => (r ? { ...r, hexes: r.hexes.includes(hex) ? r.hexes.filter((x) => x !== hex) : r.hexes.length >= 3 ? r.hexes : [...r.hexes, hex] } : r));
-        return;
-      }
-      if (race) return;
       setNotice(null);
       setSelection({ kind: "aircraft", hex });
       setLiveSelected(aircraftRef.current.find((a) => a.hex === hex));
     },
-    [racePicking, race],
+    [],
   );
 
   const pickWallet = async (opt: WalletOption) => {
@@ -286,11 +273,6 @@ export function App() {
   const selState = selectedHex ? flightState(selectedHex, flights, arrivals) : null;
   const held = selState && selState.kind !== "approaching" && liveSelected ? { name: flightName(liveSelected), text: stateText(selState, now) } : null;
 
-  const createRace = async () => {
-    if (!race) return;
-    const r = await onCreate({ kind: "race", hexes: race.hexes });
-    if (r) setRace({ hexes: race.hexes, marketId: r.marketId });
-  };
   const openWatch = () => {
     setNotice(null);
     const start = selectedHex && flights.some((f) => f.hex === selectedHex) ? selectedHex : (nextApproach(flights)?.hex ?? null);
@@ -301,16 +283,14 @@ export function App() {
     <div className="app">
       <MapView
         selectedHex={selectedHex}
-        raceHexes={raceHexes}
-        raceTracks={raceTracks}
         destination={detail?.destination ?? null}
         onAircraftClick={onAircraftClick}
         onAirportClick={(icao) => {
           // Live-stream airports open their stream; there are no departure-board markets.
           const cam = webcams.find((w) => w.icao === icao);
-          if (!race && cam) window.open(cam.url, "_blank", "noopener,noreferrer");
+          if (cam) window.open(cam.url, "_blank", "noopener,noreferrer");
         }}
-        onBackgroundClick={() => !race && setSelection(null)}
+        onBackgroundClick={() => setSelection(null)}
         onAircraftUpdate={onAircraftUpdate}
         onStatus={(s) => setData((d) => (d.status === s.status && d.updatedAt === s.updatedAt ? d : { status: s.status, updatedAt: s.updatedAt }))}
         flyTo={flyTo}
@@ -321,20 +301,6 @@ export function App() {
         <button type="button" className="btn accent-btn" onClick={openWatch} title="Live stream, approach map and countdown for the next landing">
           <span aria-hidden>▶</span> <span className="label-wide">Now landing</span>
           <span className="label-narrow">Live</span>
-        </button>
-        <button
-          type="button"
-          className="btn"
-          onClick={() => {
-            setSelection(null);
-            setRace({ hexes: selectedHex && flights.some((f) => f.hex === selectedHex) ? [selectedHex] : [], marketId: null });
-          }}
-          title="Pick two or three arriving flights and predict which lands first"
-        >
-          <span className="label-wide">Who lands first?</span>
-          <span className="label-narrow" aria-hidden>
-            🏁
-          </span>
         </button>
         <button type="button" className="btn" onClick={() => setAbout(true)} aria-label={t.aboutTitle}>
           ?
@@ -373,8 +339,7 @@ export function App() {
           <span className="label-narrow">{health.demo ? t.demoBannerShort : health.network !== "Mainnet" ? t.testnetBannerShort(health.network) : ""}</span>
         </div>
       )}
-      {!race && (
-        <FlightSwitcher
+      <FlightSwitcher
           flights={flights}
           selectedHex={selectedHex}
           status={data.status}
@@ -382,52 +347,28 @@ export function App() {
           held={held}
           onSelect={(a) => (setNotice(null), selectFlight(a))}
         />
-      )}
 
-      {race && (
-        <RacePanel
-          hexes={race.hexes}
-          marketId={race.marketId}
-          flights={flights}
-          arrivals={arrivals}
-          markets={marketList}
-          busy={busy}
-          onChange={(hexes) => setRace((r) => (r ? { ...r, hexes } : r))}
-          onCreate={createRace}
-          onPrepare={onPrepare}
-          onConfirm={onConfirm}
-          onTracks={setRaceTracks}
-          onClose={() => {
-            setRace(null);
-            setRaceTracks({});
-          }}
-        />
-      )}
 
-      {!race && selection?.kind === "aircraft" && (
+      {selection?.kind === "aircraft" && (
         <AircraftPanel
           hex={selection.hex}
           live={liveSelected}
           detail={detail}
           markets={aircraftMarkets}
-          scheduleAvailable={!!health?.schedule}
+          scheduleAvailable={!!health?.schedule && !health.schedule.simulated}
           busy={busy}
           dataUpdatedAt={data.updatedAt}
           arrivalNote={held?.text ?? null}
           onPrepare={onPrepare}
           onConfirm={onConfirm}
           onCreate={onCreate}
-          onStartRace={() => {
-            setRace({ hexes: [selection.hex], marketId: null });
-            setSelection(null);
-          }}
           onClose={() => setSelection(null)}
         />
       )}
-      {!race && selection?.kind === "airport" && (
+      {selection?.kind === "airport" && (
         <AirportPanel icao={selection.icao} markets={marketList} busy={busy} onPrepare={onPrepare} onConfirm={onConfirm} onCreate={onCreate} onClose={() => setSelection(null)} />
       )}
-      {!race && selection?.kind === "market" && selectedMarket && (
+      {selection?.kind === "market" && selectedMarket && (
         <aside className="panel">
           <div className="panel-head">
             <div>
@@ -443,7 +384,7 @@ export function App() {
           </div>
         </aside>
       )}
-      {!race && selection?.kind === "portfolio" && wallet && (
+      {selection?.kind === "portfolio" && wallet && (
         <PortfolioPanel
           wallet={wallet}
           busy={busy}

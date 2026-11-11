@@ -172,7 +172,7 @@ export function WatchView(p: WatchViewProps) {
 
             {live && (
               <button type="button" className="btn" onClick={() => p.onPredict(live.hex)}>
-                Demo prediction on this flight
+                Prediction on this flight
               </button>
             )}
 

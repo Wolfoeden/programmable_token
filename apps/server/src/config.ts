@@ -36,6 +36,10 @@ const Env = z.object({
   MARKET_REQUESTS_PER_HOUR: z.coerce.number().default(30),
   CLAIM_WINDOW_DAYS: z.coerce.number().min(31).default(90),
   DATA_DIR: z.string().default("data"),
+  /** Shadow log: keep following flights without viewers (model calibration). */
+  SHADOW_ALWAYS_ON: bool,
+  /** Bearer token for /api/admin/* (shadow log download). Unset = admin API off. */
+  ADMIN_TOKEN: z.string().min(16).optional(),
   /** Directory of the built web app to serve, e.g. ../web/dist */
   WEB_DIST: z.string().optional(),
 });

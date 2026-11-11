@@ -8,6 +8,7 @@ import { z } from "zod";
 import { addressFromHexOrBech32, getAddressDetails, Lucid, type Assets } from "@lucid-evolution/lucid";
 import {
   webcamFor,
+  normalCdf,
   airportByIcao,
   parimutuel,
   proposeCancellation,
@@ -39,6 +40,7 @@ import type { RouteSource } from "./routes.js";
 import type { ScheduleProvider } from "./schedule.js";
 import type { Store } from "./store.js";
 import type { Tracker } from "./tracker.js";
+import type { ShadowLog } from "./shadow.js";
 import type { CamTraffic } from "./traffic.js";
 import { HttpError, RateLimiter, toJson } from "./util.js";
 
@@ -53,6 +55,8 @@ export interface Services {
   maker: MarketMaker;
   traffic: CamTraffic;
   tracker: Tracker;
+  /** Shadow log of model, outcomes and bets (optional in tests). */
+  shadow?: ShadowLog;
 }
 
 const Hex = z.string().regex(/^[0-9a-fA-F]+$/);
@@ -222,7 +226,6 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
     const body = z
       .discriminatedUnion("kind", [
         z.object({ kind: z.literal("landing_before"), hex: z.string() }),
-        z.object({ kind: z.literal("race"), hexes: z.array(z.string()).min(2).max(4) }),
         z.object({ kind: z.literal("delay"), hex: z.string(), minutes: z.number().int().min(15).max(180).default(15) }),
         z.object({
           kind: z.literal("scheduled"),
@@ -238,9 +241,6 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
     switch (body.kind) {
       case "landing_before":
         created = await s.maker.landing(body.hex.toLowerCase());
-        break;
-      case "race":
-        created = await s.maker.race(body.hexes.map((h) => h.toLowerCase()));
         break;
       case "delay":
         created = await s.maker.delayAirborne(body.hex.toLowerCase(), body.minutes);
@@ -347,6 +347,29 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
         : await buildBetOrder(lucid, s.ctx.contracts, m, body.outcome, stake, now());
     const quote = parimutuel.quote(m.datum.pools, body.outcome, m.datum.feeBps, stake);
     const networkFee = BigInt(tx.toTransaction().body().fee());
+    if (s.shadow) {
+      const q = m.datum.question;
+      const hex = q.kind === "race" ? undefined : q.flight.icao24 || undefined;
+      const est = hex ? s.traffic.estimate(hex) : undefined;
+      const threshold = q.kind === "landing_before" ? Number(q.threshold) : undefined;
+      s.shadow.bet({
+        v: 1,
+        kind: "bet",
+        txHash: tx.toHash(),
+        at: Date.now(),
+        marketId: m.datum.marketId,
+        question: q.kind,
+        ...(hex ? { hex } : {}),
+        ...(threshold !== undefined ? { threshold } : {}),
+        outcome: body.outcome,
+        stake: stake.toString(),
+        wallet: s.shadow.walletId(bech32(body.address)),
+        closeTime: Number(m.datum.closeTime),
+        pools: m.datum.pools.map(String),
+        multiplier: quote.multiplier,
+        model: est && threshold !== undefined ? { ...est, pYes: normalCdf((threshold - est.etaMs) / est.sigmaMs) } : null,
+      });
+    }
     return toJson({
       tx: tx.toCBOR(),
       quote: { payout: quote.payout, multiplier: quote.multiplier, probabilityAfter: quote.probabilityAfter },
@@ -404,6 +427,7 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
       }
       throw e;
     });
+    s.shadow?.submitted(txHash);
     setTimeout(() => void s.index.refresh(), 1500);
     return { txHash };
   });
@@ -452,6 +476,27 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
       }));
     return toJson({ lovelace: holdings.lovelace ?? 0n, positions, orders });
   });
+
+  // ## Admin: shadow log download (only with ADMIN_TOKEN)
+
+  if (s.cfg.ADMIN_TOKEN && s.shadow) {
+    const shadow = s.shadow;
+    const token = s.cfg.ADMIN_TOKEN;
+    const auth = (req: FastifyRequest) => {
+      if (req.headers.authorization !== `Bearer ${token}`) throw new HttpError(401, "unauthorized");
+    };
+    app.get("/api/admin/shadow", async (req) => {
+      auth(req);
+      return { files: shadow.files() };
+    });
+    app.get("/api/admin/shadow/:file", async (req, reply) => {
+      auth(req);
+      const { file } = z.object({ file: z.string() }).parse(req.params);
+      const text = shadow.read(file);
+      if (text === null) throw new HttpError(404, "not_found");
+      return reply.type("application/x-ndjson").send(text);
+    });
+  }
 
   // ## Demo wallets (demo mode only)
 

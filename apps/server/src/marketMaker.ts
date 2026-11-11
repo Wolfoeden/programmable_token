@@ -67,6 +67,10 @@ export class MarketMaker {
   /** Departure-board markets (cancellation, pre-departure delay). Off by default. */
   allowScheduled = false;
 
+  /** Tests can switch these back on. */
+  allowRaces = false;
+  allowSimulatedSchedule = false;
+
   constructor(
     private cfg: Config,
     private ctx: ChainContext,
@@ -126,6 +130,8 @@ export class MarketMaker {
   }
 
   async race(hexes: string[]): Promise<CreatedMarket> {
+    // Races are switched off: players would pick exactly the pairs the model gets wrong.
+    if (!this.allowRaces) throw new HttpError(422, "not_offered", "Races are not offered");
     if (hexes.length < 2 || hexes.length > 4) throw new HttpError(422, "race_size", "A race needs 2 to 4 flights");
     const entries = [];
     for (const hex of hexes) entries.push(await this.flightFor(hex));
@@ -136,6 +142,8 @@ export class MarketMaker {
 
   async delayAirborne(hex: string, minutes: number): Promise<CreatedMarket> {
     if (!this.schedule) throw new HttpError(501, "schedule_unavailable", "No schedule provider configured");
+    // A simulated timetable would mean an invented scheduled arrival.
+    if (this.schedule.simulated && !this.allowSimulatedSchedule) throw new HttpError(422, "not_offered", "Delay predictions need a real timetable");
     const { ac, flight } = await this.flightFor(hex);
     const sched = await this.schedule.airborne(flight, this.ctx.now(), ac);
     if (!sched) throw new HttpError(422, "schedule_not_found", "Schedule for this flight not found");

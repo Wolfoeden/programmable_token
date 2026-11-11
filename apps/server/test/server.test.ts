@@ -20,6 +20,7 @@ import { Oracle } from "../src/oracle.js";
 import type { Route, RouteSource } from "../src/routes.js";
 import { Store } from "../src/store.js";
 import { Tracker } from "../src/tracker.js";
+import { ShadowLog } from "../src/shadow.js";
 import { CamTraffic } from "../src/traffic.js";
 
 class FakeAdsb implements AdsbSource {
@@ -81,6 +82,8 @@ async function lovelaceOf(wallet: string): Promise<bigint> {
   return BigInt(res.wallets.find((w) => w.name.toLowerCase() === wallet)!.lovelace);
 }
 
+let shadow: ShadowLog;
+
 describe("server pipeline (emulator, fake flight data)", () => {
   beforeAll(async () => {
     const cfg = loadConfig({ DEMO: "1", DATA_DIR: mkdtempSync(join(tmpdir(), "frf-")) } as NodeJS.ProcessEnv);
@@ -93,7 +96,8 @@ describe("server pipeline (emulator, fake flight data)", () => {
     maker = new MarketMaker(cfg, ctx, index, adsb, new FakeRoutes(), undefined, store, tracker);
     oracle = new Oracle(ctx, tracker, undefined, store);
     batcher = new Batcher(ctx);
-    app = await buildApi({ cfg, ctx, index, adsb, routes: new FakeRoutes(), schedule: undefined, store, maker, traffic, tracker });
+    shadow = new ShadowLog(cfg.DATA_DIR);
+    app = await buildApi({ cfg, ctx, index, adsb, routes: new FakeRoutes(), schedule: undefined, store, maker, traffic, tracker, shadow });
     // BA902 cruising towards Frankfurt, 600 km west of it.
     const now = ctx.now();
     const p = destinationPoint(FRA, 90, 250);
@@ -149,6 +153,13 @@ describe("server pipeline (emulator, fake flight data)", () => {
     const { market } = await call<{ market: { pools: string[]; pending: { orders: number } } }>("GET", `/api/markets/${marketId}`);
     expect(market.pending.orders).toBe(0);
     expect(market.pools.reduce((a, b) => a + BigInt(b), 0n)).toBe(34_000_000n);
+    // Both bets are in the shadow log, built and submitted, with a hashed wallet.
+    const file = shadow.files().find((f) => f.name.startsWith("bets-"))!;
+    const recs = shadow.read(file.name)!.trim().split("\n").map((l) => JSON.parse(l));
+    const bets = recs.filter((r) => r.kind === "bet");
+    expect(bets.map((b) => [b.outcome, b.stake])).toEqual([[0, "10000000"], [1, "4000000"]]);
+    expect(bets[0].wallet).toMatch(/^[0-9a-f]{16}$/);
+    expect(recs.filter((r) => r.kind === "submitted").map((r) => r.txHash)).toEqual(bets.map((b) => b.txHash));
   });
 
   it("resolves YES after a touchdown before the line, and pays the winner", async () => {

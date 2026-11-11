@@ -66,3 +66,23 @@ describe("CamTraffic arrivals", () => {
     expect(t.arrivalList()[0]?.status).toBe("final");
   });
 });
+
+describe("CamTraffic shadow log", () => {
+  it("emits one record with samples when a flight lands", async () => {
+    const adsb = new Fake();
+    const t = new CamTraffic(adsb);
+    const out: unknown[] = [];
+    t.onFinished = (f) => out.push(f);
+    t.alwaysOn = true;
+    adsb.planes = [inbound(30, Date.now())];
+    await round(t);
+    adsb.planes = [{ ...inbound(1, Date.now() + 1), onGround: true, groundSpeedKt: 100, altitudeFt: undefined }];
+    await round(t);
+    await round(t);
+    expect(out).toHaveLength(1);
+    const rec = out[0] as { outcome: { status: string }; samples: unknown[]; airport: string };
+    expect(rec.outcome.status).toBe("landed");
+    expect(rec.samples.length).toBe(1);
+    expect(rec.airport).toBe("EGLL");
+  });
+});

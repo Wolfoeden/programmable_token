@@ -8,7 +8,9 @@
     "dev": "tsx watch src/main.ts",
     "start": "tsx src/main.ts",
     "demo": "DEMO=1 tsx src/main.ts",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "shadow:report": "tsx src/shadowReportCli.ts",
+    "keygen": "tsx src/keygen.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.4.0",

@@ -15,7 +15,7 @@ export interface UpcomingListProps {
 const iata = (icao?: string) => (icao ? airportByIcao(icao)?.iata || icao : "–");
 
 /**
- * "Upcoming": every flight we follow that lands at a live-stream airport
+ * "Live flights": every flight we follow that lands at a live-stream airport
  * within the hour, soonest first, with arrival estimate and whether it
  * still takes predictions. Same button opens and closes it.
  */
@@ -37,16 +37,16 @@ export function UpcomingList(p: UpcomingListProps) {
 
   return (
     <div className="upcoming" ref={ref}>
-      <button type="button" className={`btn${open ? " active" : ""}`} onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label="Upcoming flights">
-        <span className="label-wide">Upcoming</span>
+      <button type="button" className={`btn${open ? " active" : ""}`} onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label="Live flights">
+        <span className="label-wide">Live flights</span>
         <span className="label-narrow" aria-hidden>
           ✈
         </span>
         <span className="count num">{p.flights.length}</span>
       </button>
       {open && (
-        <div className="upcoming-list" role="dialog" aria-label="Upcoming flights">
-          <div className="upcoming-head">Landing within the hour</div>
+        <div className="upcoming-list" role="dialog" aria-label="Live flights">
+          <div className="upcoming-head">Live flights · landing within the hour</div>
           {p.flights.length === 0 && (
             <div className="upcoming-empty">
               {p.status === "loading" ? "Loading flights …" : p.status === "ok" ? "No flight is landing at a live-stream airport within the hour." : "Flight data is not reachable right now."}

@@ -26,7 +26,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     body = text ? JSON.parse(text) : {};
   } catch {
-    // Not JSON: an HTML error page from the proxy or host, e.g. while the
+    // Not JSON: an HTML error page from the host (Render), e.g. while the
     // server restarts after a deploy or wakes up from sleep.
     throw new ApiError(
       res.status,

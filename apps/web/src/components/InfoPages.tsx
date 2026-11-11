@@ -49,13 +49,13 @@ function Privacy() {
   return (
     <>
       <h2>Privacy</h2>
-      <Missing items={["Controller (name, address, contact)", "Legal bases for each processing", "Retention of hosting logs at Render and Netlify", "Retention period of the bet log (model evaluation)", "Data processing agreements with the hosts", "How to exercise data-subject rights"]} />
+      <Missing items={["Controller (name, address, contact)", "Legal bases for each processing", "Retention of hosting logs at Render", "Retention period of the bet log (model evaluation)", "Data processing agreement with the host", "How to exercise data-subject rights"]} />
       <h3>What this site actually does with data</h3>
       <p>This is a technical description of the data flows in the current code, not a complete privacy policy.</p>
       <ul>
         <li>
-          <strong>Hosting.</strong> The site is served by Netlify, the API by Render (region Frankfurt). Both receive your IP address and request data
-          when you load the site; their own logging applies.
+          <strong>Hosting.</strong> The site and its API are served by Render (region Frankfurt), which receives your IP address and request
+          data when you load the site; its own logging applies.
         </li>
         <li>
           <strong>Map.</strong> Your browser loads map tiles, fonts and icons directly from OpenFreeMap (tiles.openfreemap.org), which receives your IP

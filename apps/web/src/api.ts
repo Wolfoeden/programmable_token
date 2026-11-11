@@ -12,12 +12,28 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    ...init,
-    headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
-  });
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      ...init,
+      headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
+    });
+  } catch {
+    throw new ApiError(0, "server_unreachable", "The server cannot be reached. Check your connection and try again.");
+  }
   const text = await res.text();
-  const body = text ? JSON.parse(text) : {};
+  let body: { error?: string; message?: string } = {};
+  try {
+    body = text ? JSON.parse(text) : {};
+  } catch {
+    // Not JSON: an HTML error page from the proxy or host, e.g. while the
+    // server restarts after a deploy or wakes up from sleep.
+    throw new ApiError(
+      res.status,
+      "server_busy",
+      `The server is not answering right now (HTTP ${res.status}). It may be restarting or waking up; please try again in a minute.`,
+    );
+  }
   if (!res.ok) throw new ApiError(res.status, body.error ?? "error", body.message ?? res.statusText);
   return body as T;
 }

@@ -136,6 +136,25 @@ export async function createChain(cfg: Config): Promise<ChainContext> {
 }
 
 /**
+ * Re-check later (the wallet may be funded after the server started):
+ * split through the serial wallet so reservations stay consistent.
+ */
+export async function keepOperatorSplit(w: SerialWallet, wanted = 12): Promise<void> {
+  const utxos = await w.availableUtxos();
+  const pure = utxos.filter((u) => Object.keys(u.assets).length === 1);
+  if (pure.length >= wanted / 2) return;
+  const total = pure.reduce((a, u) => a + (u.assets.lovelace ?? 0n), 0n);
+  const each = (total * 8n) / 10n / BigInt(wanted);
+  if (each < 30_000_000n) return;
+  const hash = await w.run(async (walletUtxos) => {
+    let tx = w.lucid.newTx().collectFrom(walletUtxos.filter((u) => Object.keys(u.assets).length === 1));
+    for (let i = 0; i < wanted; i++) tx = tx.pay.ToAddress(w.address, { lovelace: each });
+    return tx.complete({ presetWalletInputs: walletUtxos });
+  });
+  log.info("split operator funds into more UTxOs", { outputs: wanted, each, txHash: hash });
+}
+
+/**
  * The operator signs many transactions in a row (markets, resolutions,
  * batches). Each needs its own unspent outputs until the previous one is
  * confirmed, so a wallet with only a few UTxOs is split into several.

@@ -79,6 +79,8 @@ export function App() {
   const [infoPage, setInfoPage] = useState<InfoPage | null>(pageFromHash);
   const selectionRef = useRef<Selection>(null);
   const toastId = useRef(0);
+  /** "Preprod ADA" etc.: what the site's stakes are, shown at the wallet. */
+  const netLabel = health ? (health.demo ? "Play money" : `${health.network} ADA`) : null;
 
   const toast = useCallback((kind: Toast["kind"], text: string, detail?: string) => {
     const id = ++toastId.current;
@@ -186,7 +188,10 @@ export function App() {
       const w = opt.kind === "demo" ? demoWallet(opt.name) : await connectBrowserWallet(opt.id);
       if (w.kind === "cip30" && health) {
         const expected = health.network === "Mainnet" ? 1 : 0;
-        if (w.networkId !== expected) toast("error", t.wrongNetwork);
+        if (w.networkId !== expected) {
+          toast("error", t.wrongNetworkFor(health.network));
+          return;
+        }
       }
       setWallet(w);
       remember(w.id);
@@ -308,12 +313,13 @@ export function App() {
           <span className="label-narrow">Live</span>
         </button>
         {!wallet && (
-          <button type="button" className="btn primary" onClick={() => setWalletDialog(true)}>
+          <button type="button" className="btn primary" onClick={() => setWalletDialog(true)} title={health && !health.demo ? `Only ${health.network} wallets can connect right now` : undefined}>
             <span className="label-wide">Connect</span>Wallet
           </button>
         )}
         <SiteMenu
           wallet={wallet}
+          netLabel={netLabel}
           onConnect={() => setWalletDialog(true)}
           onDisconnect={() => {
             setWallet(null);
@@ -324,7 +330,7 @@ export function App() {
         />
       </header>
 
-      {health && (
+      {health?.demo && (
         <div className="banner">
           <span className="label-wide">{health.demo ? t.demoBanner : health.network !== "Mainnet" ? t.testnetBanner(health.network) : ""}</span>
           <span className="label-narrow">{health.demo ? t.demoBannerShort : health.network !== "Mainnet" ? t.testnetBannerShort(health.network) : ""}</span>
@@ -435,7 +441,7 @@ export function App() {
         />
       )}
       <Toasts items={toasts} onDismiss={(id) => setToasts((xs) => xs.filter((x) => x.id !== id))} />
-      {walletDialog && <WalletDialog demo={!!health?.demo} onPick={pickWallet} onClose={() => setWalletDialog(false)} />}
+      {walletDialog && <WalletDialog demo={!!health?.demo} network={health?.network ?? null} onPick={pickWallet} onClose={() => setWalletDialog(false)} />}
       {about && <AboutDialog onClose={() => setAbout(false)} />}
       {infoPage && <InfoDialog page={infoPage} onClose={closeInfo} />}
     </div>

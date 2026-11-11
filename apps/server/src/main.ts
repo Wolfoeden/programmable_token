@@ -2,7 +2,7 @@
 import { AdsbClient } from "./adsb.js";
 import { buildApi } from "./api.js";
 import { Batcher } from "./batcher.js";
-import { createChain } from "./chain.js";
+import { createChain, keepOperatorSplit } from "./chain.js";
 import { ChainIndex } from "./chainIndex.js";
 import { loadConfig } from "./config.js";
 import { MarketMaker } from "./marketMaker.js";
@@ -61,6 +61,7 @@ async function main() {
   loop("oracle", 15_000, () => oracle.tick(index.live));
   loop("batcher", 10_000, () => batcher.tick(index.live, index.orders));
   loop("sweeper", 10 * 60_000, () => oracle.sweep(index.live));
+  if (!cfg.DEMO) loop("operator-split", 5 * 60_000, () => keepOperatorSplit(ctx.operator));
 
   const shutdown = async () => {
     store.flush();

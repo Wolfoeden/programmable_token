@@ -6,11 +6,13 @@ import { browserWallets, type WalletOption } from "../wallet";
 
 export interface WalletDialogProps {
   demo: boolean;
+  /** Network the site runs on, e.g. "Preprod". */
+  network: string | null;
   onPick: (opt: WalletOption) => void;
   onClose: () => void;
 }
 
-export function WalletDialog({ demo, onPick, onClose }: WalletDialogProps) {
+export function WalletDialog({ demo, network, onPick, onClose }: WalletDialogProps) {
   const [browser] = useState(() => browserWallets());
   const [demoList, setDemoList] = useState<Array<{ name: string; lovelace: string }>>([]);
   useEffect(() => {
@@ -26,6 +28,11 @@ export function WalletDialog({ demo, onPick, onClose }: WalletDialogProps) {
     <div className="overlay" onClick={onClose}>
       <div className="dialog" role="dialog" aria-modal="true" aria-label={t.walletTitle} onClick={(e) => e.stopPropagation()}>
         <h2>{t.walletTitle}</h2>
+        {!demo && network && (
+          <p className="note net-note">
+            <span className="net-tag">{network} ADA</span> Only {network} wallets can connect right now. Switch Lace, Eternl or your wallet to {network} first. Stakes are {network} test ADA from the faucet.
+          </p>
+        )}
         {demo && (
           <>
             <div className="section-title">{t.demoWallets}</div>

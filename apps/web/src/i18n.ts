@@ -60,6 +60,7 @@ export const t = {
   demoWallets: "Demo wallets",
   browserWallets: "Browser wallets",
   wrongNetwork: "Your wallet is on a different network than the server.",
+  wrongNetworkFor: (n: string) => `Only ${n} wallets can connect right now. Switch your wallet to ${n} and connect again.`,
   disconnect: "Disconnect",
   submitted: "Transaction submitted",
   betPlaced: "Bet submitted, the batcher will book it shortly.",

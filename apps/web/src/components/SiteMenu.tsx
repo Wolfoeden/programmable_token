@@ -4,6 +4,8 @@ import { INFO_PAGES } from "./InfoPages";
 
 export interface SiteMenuProps {
   wallet: AppWallet | null;
+  /** E.g. "Preprod ADA". */
+  netLabel?: string | null;
   onConnect: () => void;
   onDisconnect: () => void;
   onMyBets: () => void;
@@ -48,6 +50,7 @@ export function SiteMenu(p: SiteMenuProps) {
               <div className="menu-wallet">
                 {p.wallet.icon && <img src={p.wallet.icon} alt="" />}
                 <span>{p.wallet.name}</span>
+                {p.netLabel && <span className="net-tag">{p.netLabel}</span>}
               </div>
               <button type="button" role="menuitem" onClick={pick(p.onMyBets)}>
                 My bets
@@ -58,7 +61,7 @@ export function SiteMenu(p: SiteMenuProps) {
             </>
           ) : (
             <button type="button" role="menuitem" onClick={pick(p.onConnect)}>
-              Connect wallet
+              Connect wallet {p.netLabel && <span className="net-tag">{p.netLabel}</span>}
             </button>
           )}
           <hr />

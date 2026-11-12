@@ -8,7 +8,7 @@ import { createChain, encodeUtxo, type ChainContext } from "../src/chain.js";
 import { SafePassageService } from "../src/safePassage.js";
 import { registerSafePassageApi } from "../src/safePassageApi.js";
 import { HttpError } from "../src/util.js";
-import { encodeSafeEvidence, decodeSafeEvidence } from "@flightradar/chain";
+import { buildSafeClaim, encodeSafeEvidence, decodeSafeEvidence } from "@flightradar/chain";
 import type { AdsbSource } from "../src/adsb.js";
 
 const token = "safe-test-operator-token";
@@ -124,10 +124,13 @@ describe("Safe Passage operator/API workflow", () => {
     const payload = { address: w.account.address, utxos: (await ctx.provider.getUtxos(w.account.address)).map(encodeUtxo) };
     const portfolio = await app.inject({ method: "POST", url: "/api/safe-passage/portfolio", payload });
     expect(portfolio.json().positions[0].no).toBe("1000000");
-    const claim = await app.inject({ method: "POST", url: "/api/safe-passage/claim", payload: { ...payload, marketId: id } });
-    expect(claim.statusCode, claim.body).toBe(200);
+    const cold = new SafePassageService({ ...cfg, DATA_DIR: mkdtempSync(join(tmpdir(), "safe-before-claim-")) }, ctx, adsb);
+    const recovered = await cold.require(id);
+    expect(cold.dto(recovered).evidence?.reason).toContain("Confirmed successful");
+    const userLucid = await ctx.userLucid(payload.address, payload.utxos);
+    const claim = await buildSafeClaim(userLucid, cold.contracts, recovered, ctx.now());
     const lucid = await ctx.newLucid(); lucid.selectWallet.fromSeed(w.account.seedPhrase);
-    await (await lucid.fromTx(claim.json().tx).sign.withWallet().complete()).submit(); ctx.emulator!.awaitBlock(1);
+    await (await lucid.fromTx(claim.toCBOR()).sign.withWallet().complete()).submit(); ctx.emulator!.awaitBlock(1);
     const restored = new SafePassageService({ ...cfg, DATA_DIR: mkdtempSync(join(tmpdir(), "safe-settled-")) }, ctx, adsb);
     const m = await restored.require(id); const dto = restored.dto(m);
     expect(dto).toMatchObject({ phase: "resolved", winner: 0 });

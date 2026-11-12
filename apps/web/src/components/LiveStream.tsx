@@ -31,25 +31,28 @@ export function LiveStream({ icao }: { icao: string }) {
   }, [icao]);
   if (!cam) return null;
 
-  const caption = (
-    <div className="stream-caption">
-      Live camera at {cam.name} ({icao}){cam.note ? `, ${cam.note}` : ""}. It shows the airport, not necessarily this aircraft.
-    </div>
-  );
-  const sourceLink = (
-    <a href={cam.url} target="_blank" rel="noopener noreferrer">
-      Open the original stream on YouTube
+  const caption = <div className="stream-caption">The camera shows the airport and may not show this aircraft.</div>;
+  const external = (
+    <a className="watch-ext" href={cam.url} target="_blank" rel="noopener noreferrer" aria-label="Open the camera on YouTube" onClick={(e) => e.stopPropagation()}>
+      ↗
     </a>
   );
 
-  if (!info && !failed) return <div className="stream stream-fallback">Checking the live stream …</div>;
+  if (!info && !failed) return <div className="watch-card muted">Checking the airport camera …</div>;
   if (failed || !info?.embeddable || !info.videoId) {
+    // Not embeddable: the card opens the original stream instead.
     return (
       <div className="stream">
-        <div className="stream-fallback">
-          <div>The stream can't be shown here. {info?.reason ?? "The check did not respond."}</div>
-          {sourceLink}
-        </div>
+        <a className="watch-card" href={cam.url} target="_blank" rel="noopener noreferrer">
+          <span className="watch-play" aria-hidden>
+            ▶
+          </span>
+          <span className="watch-text">
+            <strong>Watch the approach</strong>
+            <small>{cam.name} airport camera · opens YouTube</small>
+          </span>
+          <span className="watch-ext">↗</span>
+        </a>
         {caption}
       </div>
     );
@@ -65,21 +68,27 @@ export function LiveStream({ icao }: { icao: string }) {
           allowFullScreen
         />
       ) : (
-        <button type="button" className="stream-frame stream-load" onClick={() => {
+        <button
+          type="button"
+          className="watch-card"
+          title="Loads a YouTube player (Google), which receives your IP address."
+          onClick={() => {
             consented = true;
             setPlay(true);
-          }}>
-          <span className="stream-play" aria-hidden>
+          }}
+        >
+          <span className="watch-play" aria-hidden>
             ▶
           </span>
-          <span>Load live stream</span>
-          <small>Loads a YouTube player (Google) and sends your IP address to YouTube.</small>
+          <span className="watch-text">
+            <strong>Watch the approach</strong>
+            <small>{cam.name} airport camera</small>
+          </span>
+          {external}
         </button>
       )}
       {caption}
-      <div className="stream-caption">
-        If the broadcast is offline, YouTube shows that in the player. {sourceLink}
-      </div>
+      {!play && <div className="stream-caption small">Playing loads YouTube (Google), which receives your IP address.</div>}
     </div>
   );
 }

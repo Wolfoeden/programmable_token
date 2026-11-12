@@ -8,6 +8,7 @@ import { t } from "../i18n";
 import type { AircraftDetail, AircraftDto, MarketDto } from "../types";
 import { LiveStream } from "./LiveStream";
 import { MarketCard, type MarketCardProps } from "./MarketCard";
+import { RulesPanel } from "./RulesPanel";
 
 export interface AircraftPanelProps {
   hex: string;
@@ -30,6 +31,8 @@ export interface AircraftPanelProps {
   /** The soonest other flight that still takes predictions. */
   nextOpen?: AircraftDto | null;
   onSelectFlight?: (a: AircraftDto) => void;
+  /** The connected wallet's stakes: market id → outcome → lovelace. */
+  mine?: Map<string, Map<number, bigint>>;
 }
 
 type Sheet = "min" | "peek" | "full";
@@ -112,10 +115,13 @@ export function AircraftPanel(p: AircraftPanelProps) {
           </button>
         )}
         <div className="panel-title">
+          {p.position && p.position.index >= 0 && (
+            <div className="eyebrow num">
+              Flight {p.position.index + 1} of {p.position.count}
+            </div>
+          )}
           <h2>{a?.flightNumber || route?.flightNumber || a?.callsign || p.hex.toUpperCase()}</h2>
-          <div className="sub num">
-            {[p.position && p.position.index >= 0 ? `Flight ${p.position.index + 1} of ${p.position.count}` : null, route?.airline, a?.registration].filter(Boolean).join(" · ")}
-          </div>
+          <div className="sub">{[route?.airline, a?.registration].filter(Boolean).join(" · ")}</div>
         </div>
         {p.onStep && (
           <button type="button" className="icon-btn step-btn" onClick={() => p.onStep!(1)} disabled={!p.position || p.position.count === 0 || (p.position.count === 1 && p.position.index === 0)} aria-label="Next flight">
@@ -135,27 +141,30 @@ export function AircraftPanel(p: AircraftPanelProps) {
         </button>
       </div>
       <div className="panel-body">
-        <div className="route">
-          <div>
-            <div className="code">{origin?.iata || route?.origin || a?.origin || "–"}</div>
-            <div className="name">{origin?.city || origin?.name || "Origin"}</div>
+        <div className="route2">
+          <div className="route2-codes">
+            <span className="code">{origin?.iata || route?.origin || a?.origin || "–"}</span>
+            <span className="route2-line" aria-hidden>
+              <span className="route2-dot" />
+              <span className="route2-done" style={{ width: `${(progress ?? 0) * 100}%` }} />
+              <span className="route2-plane" style={{ left: `${(progress ?? 0) * 100}%` }}>
+                ✈
+              </span>
+            </span>
+            <span className="code">{dest?.iata || destIcao || "–"}</span>
           </div>
-          <div className="muted">✈</div>
-          <div className="end">
-            <div className="code">{dest?.iata || destIcao || "–"}</div>
-            <div className="name">{dest?.city || dest?.name || "Destination"}</div>
+          <div className="route2-names">
+            <span>{origin?.city || origin?.name || "Origin"}</span>
+            <span>{dest?.city || dest?.name || "Destination"}</span>
           </div>
-          {progress !== null && (
-            <div className="progress" aria-hidden>
-              <div style={{ width: `${progress * 100}%` }} />
-            </div>
-          )}
         </div>
 
         {unconfirmed && (
-          <div className="pool-note">
-            Destination from route data, not confirmed yet: another airport in a similar direction is still possible. If the flight goes elsewhere,
-            the prediction is voided and all stakes are refunded.
+          <div className="info-note">
+            <span className="info-icon" aria-hidden>
+              i
+            </span>
+            <span>Destination unconfirmed. If it lands elsewhere, the market is void and stakes are refunded.</span>
           </div>
         )}
 
@@ -174,6 +183,7 @@ export function AircraftPanel(p: AircraftPanelProps) {
             onPrepare={p.onPrepare}
             onConfirm={p.onConfirm}
             onEngage={() => setSheet("full")}
+            mine={p.mine?.get(m.id) ?? null}
             {...(p.onVoid ? { onVoid: p.onVoid } : {})}
           />
         ))}
@@ -207,6 +217,8 @@ export function AircraftPanel(p: AircraftPanelProps) {
               )}
             </div>
           ) : null)}
+
+        {(showPreview ? preview : (landingMarket ?? sorted[0])) && <RulesPanel m={(showPreview ? preview : (landingMarket ?? sorted[0]))!} />}
 
         {hasCam && destIcao && <LiveStream icao={destIcao} />}
 

@@ -46,3 +46,10 @@ services:
         value: https://opendata.adsb.fi/api
       - key: DATA_DIR
         value: data
+      # Limits against locking house capital (each market binds about
+      # 28 ADA of the operator wallet): new markets per IP and hour, and
+      # open markets at a time.
+      - key: MARKET_REQUESTS_PER_HOUR
+        value: "10"
+      - key: MAX_OPEN_MARKETS
+        value: "50"

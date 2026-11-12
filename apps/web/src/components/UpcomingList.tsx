@@ -14,6 +14,8 @@ export interface UpcomingListProps {
   /** All prediction pools, for the Pools tab. */
   markets: MarketDto[];
   onOpenMarket: (m: MarketDto) => void;
+  /** Flights (hex) the connected wallet has bet on. */
+  myHexes?: Set<string>;
 }
 
 const ORDER: Record<string, number> = { creating: 0, open: 0, closed: 1, resolved: 2, void: 2 };
@@ -66,7 +68,8 @@ export function UpcomingList(p: UpcomingListProps) {
     (a, b) => (ORDER[a.phase] ?? 3) - (ORDER[b.phase] ?? 3) || (a.phase === "resolved" || a.phase === "void" ? b.closeTime - a.closeTime : a.closeTime - b.closeTime),
   );
   // Flights open for betting or opening later; closed ones drop out of the list.
-  const openFlights = p.flights.filter((f) => p.stateOf(f).kind !== "closed");
+  // Flights you have bet on stay in the list after betting closed.
+  const openFlights = p.flights.filter((f) => p.stateOf(f).kind !== "closed" || p.myHexes?.has(f.hex));
   const openPools = p.markets.filter((m) => (m.phase === "open" || m.phase === "creating") && m.closeTime > now).length;
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -143,7 +146,10 @@ export function UpcomingList(p: UpcomingListProps) {
                     }}
                   >
                     <span className="up-flight">
-                      <strong>{f.flightNumber || f.callsign}</strong>
+                      <strong>
+                        {f.flightNumber || f.callsign}
+                        {p.myHexes?.has(f.hex) && <span className="mine-tag">Your bet</span>}
+                      </strong>
                       <span className="muted">
                         {iata(f.origin)} → {iata(f.airport)}
                       </span>

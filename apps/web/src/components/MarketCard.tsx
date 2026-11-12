@@ -4,6 +4,7 @@ import { ada, countdown, formatOdds, formatPercent, utcClock } from "../format";
 import { useNow } from "../hooks";
 import { t } from "../i18n";
 import type { BetCosts, MarketDto } from "../types";
+import { airportByIcao } from "@flightradar/core/airports";
 import { RulesPanel } from "./RulesPanel";
 
 const OUTCOME_COLORS = ["var(--yes)", "var(--no)"];
@@ -32,6 +33,25 @@ export interface MarketCardProps {
   onVoid?: (market: MarketDto) => void;
   /** Called when the user picks an outcome (e.g. to expand a bottom sheet). */
   onEngage?: () => void;
+  /** The connected wallet's stake per outcome in this market (lovelace). */
+  mine?: Map<number, bigint> | null;
+}
+
+/** "Will BA851 land at LHR before" + "08:25" for the big-time layout. */
+function questionParts(m: MarketDto): { lead: string; time: string } | null {
+  const q = m.question;
+  if (q.kind !== "landing_before") return null;
+  const f = q.flight;
+  const dest = airportByIcao(f.destination)?.iata || f.destination;
+  return { lead: `Will ${f.flightNumber || f.callsign} land at ${dest} before`, time: new Date(Number(q.threshold)).toISOString().slice(11, 16) };
+}
+
+function SimpleStatus({ m, now }: { m: MarketDto; now: number }) {
+  if ((m.phase === "open" || m.phase === "preview") && m.closeTime > now) return <span className="closes mono">Closes in {countdown(m.closeTime - now)}</span>;
+  if (m.phase === "creating") return <span className="closes mono">Confirming on chain</span>;
+  if (m.phase === "resolved") return <span className="closes mono done">Result: {m.labels.en[m.winner ?? 0]}</span>;
+  if (m.phase === "void") return <span className="closes mono done">Void · refunded</span>;
+  return <span className="closes mono done">Betting closed</span>;
 }
 
 function colorFor(m: MarketDto, i: number) {
@@ -120,7 +140,7 @@ function Confirm({ bet, busy, onBack, onConfirm }: { bet: PreparedBet; busy?: bo
   );
 }
 
-export function MarketCard({ market: m, highlight, simple, busy, onPrepare, onConfirm, onVoid, onEngage }: MarketCardProps) {
+export function MarketCard({ market: m, highlight, simple, busy, onPrepare, onConfirm, onVoid, onEngage, mine }: MarketCardProps) {
   const now = useNow(1000);
   const [outcome, setOutcome] = useState<number | null>(null);
   const [stakeAda, setStakeAda] = useState("10");
@@ -132,8 +152,40 @@ export function MarketCard({ market: m, highlight, simple, busy, onPrepare, onCo
   const stake = BigInt(Math.max(0, Math.round((Number(stakeAda.replace(",", ".")) || 0) * 1_000_000)));
   const q = outcome !== null && stake > 0n ? quote(pools, outcome, BigInt(m.feeBps), stake) : null;
 
+  const parts = simple ? questionParts(m) : null;
+  const myTotal = mine ? [...mine.values()].reduce((a, b) => a + b, 0n) : 0n;
   return (
-    <div className={`market${highlight ? " highlight" : ""}${simple ? " simple" : ""}`} id={`market-${m.id}`}>
+    <div className={`market${highlight ? " highlight" : ""}${simple ? " simple pcard" : ""}`} id={`market-${m.id}`}>
+      {simple ? (
+        <>
+          <div className="pcard-head">
+            <span className="eyebrow">
+              <span className="eyebrow-dot" aria-hidden /> {m.kind === "landing_before" ? "Landing prediction" : "Prediction"}
+            </span>
+            <SimpleStatus m={m} now={now} />
+          </div>
+          {parts ? (
+            <h3 className="pq">
+              {parts.lead}
+              <span className="pq-time">
+                <span className="num">{parts.time}</span> <small>UTC?</small>
+              </span>
+            </h3>
+          ) : (
+            <h3 className="pq">{m.title.en}</h3>
+          )}
+          {myTotal > 0n && (
+            <div className="my-bet num">
+              Your bet:{" "}
+              {[...mine!.entries()]
+                .filter(([, v]) => v > 0n)
+                .map(([o, v]) => `${ada(v)} on ${m.labels.en[o] ?? `#${o}`}`)
+                .join(" · ")}
+            </div>
+          )}
+        </>
+      ) : null}
+      {!simple && (
       <div className="market-head">
         <h3>{m.title.en}</h3>
         <div className="market-meta">
@@ -147,8 +199,40 @@ export function MarketCard({ market: m, highlight, simple, busy, onPrepare, onCo
           {m.simulated && <span className="badge">{t.simulated}</span>}
         </div>
       </div>
+      )}
       {!simple && <div className="pool-note">Pool share · odds if betting closed now. Market-based, not a probability of the event.</div>}
-      <div className={`outcomes${simple ? " duo" : ""}`} role="radiogroup" aria-label={m.title.en}>
+      {simple ? (
+        <div className="opts" role="radiogroup" aria-label={m.title.en}>
+          {m.labels.en.map((label, i) => {
+            const p = m.probabilities[i] ?? 0;
+            const won = m.phase === "resolved" && m.winner === i;
+            return (
+              <button
+                key={i}
+                type="button"
+                role="radio"
+                aria-checked={outcome === i}
+                className={`opt side-${i}${outcome === i ? " selected" : ""}${won ? " winner" : ""}`}
+                disabled={!open || !!prepared}
+                onClick={() => {
+                  setOutcome(i);
+                  onEngage?.();
+                }}
+              >
+                <span className="opt-text">
+                  <span className="opt-label">{label}</span>
+                  <span className="opt-pct num">{Math.round(p * 100)}%</span>
+                </span>
+                <span className="opt-radio" aria-hidden />
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+      {simple && <div className="pool-note">Share of the current pool · not the probability of an outcome</div>}
+      {simple && open && outcome === null && !prepared && <div className="choose-hint">Choose an answer to continue.</div>}
+      {!simple && (
+      <div className="outcomes" role="radiogroup" aria-label={m.title.en}>
         {m.labels.en.map((label, i) => {
           const p = m.probabilities[i] ?? 0;
           const won = m.phase === "resolved" && m.winner === i;
@@ -178,6 +262,7 @@ export function MarketCard({ market: m, highlight, simple, busy, onPrepare, onCo
           );
         })}
       </div>
+      )}
       {open && outcome !== null && !prepared && (
         <div className="betbox">
           <div className="stake-row">
@@ -232,8 +317,7 @@ export function MarketCard({ market: m, highlight, simple, busy, onPrepare, onCo
           }}
         />
       )}
-      {simple && <div className="pool-note duo-note">Pool shares, market-based · not a probability</div>}
-      <RulesPanel m={m} />
+      {!simple && <RulesPanel m={m} />}
       {onVoid && (m.phase === "open" || m.phase === "closed") && (
         <button type="button" className="btn small flat operator-void" disabled={busy} onClick={() => onVoid(m)}>
           Operator: void market (refund everyone)

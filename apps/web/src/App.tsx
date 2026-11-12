@@ -312,6 +312,26 @@ export function App() {
       toast("ok", t.submitted, hash);
     });
 
+  // The connected wallet's stakes per market and outcome (positions plus orders not booked yet).
+  const { data: portfolio } = usePoll(async () => (wallet ? api.portfolio(await wallet.payload()) : null), 30_000, [wallet?.id], !!wallet);
+  const mine = useMemo(() => {
+    const out = new Map<string, Map<number, bigint>>();
+    const add = (id: string, o: number, v: bigint) => {
+      const m = out.get(id) ?? new Map<number, bigint>();
+      m.set(o, (m.get(o) ?? 0n) + v);
+      out.set(id, m);
+    };
+    for (const pos of portfolio?.positions ?? []) for (const h of pos.holdings) add(pos.marketId, h.outcome, BigInt(h.quantity));
+    for (const o of portfolio?.orders ?? []) if (o.order.kind === "bet") add(o.marketId, o.order.outcome, BigInt(o.order.stake));
+    return out;
+  }, [portfolio]);
+  /** Flights (hex) the wallet has a bet on. */
+  const myHexes = useMemo(() => {
+    const set = new Set<string>();
+    for (const m of marketList) if (mine.has(m.id)) for (const h of m.icao24) set.add(h);
+    return set;
+  }, [mine, marketList]);
+
   // Operator wallet connected: deposits of decided markets it can take back.
   const [deposits, setDeposits] = useState<{ count: number; lovelace: string } | null>(null);
   const loadDeposits = useCallback(async () => {
@@ -395,6 +415,7 @@ export function App() {
           stateOf={(a) => betState(a, now)}
           onSelect={(a) => (setNotice(null), selectFlight(a))}
           markets={marketList}
+          myHexes={myHexes}
           onOpenMarket={(m) => {
             // A live flight opens its flight panel; otherwise the market card alone.
             const live = aircraftRef.current.find((a) => m.icao24.includes(a.hex));
@@ -461,6 +482,7 @@ export function App() {
           {...(operator ? { onVoid } : {})}
           onClose={() => setSelection(null)}
           position={{ index: flights.findIndex((f) => f.hex === selection.hex), count: flights.length }}
+          mine={mine}
           nextOpen={flights.find((f) => f.hex !== selection.hex && (bettable(f, now) || !!f.markets)) ?? null}
           onSelectFlight={(f) => (setNotice(null), selectFlight(f))}
           onStep={(dir) => {

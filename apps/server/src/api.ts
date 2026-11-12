@@ -14,6 +14,7 @@ import {
   proposeCancellation,
   proposeDelayScheduled,
   type FlightRef,
+  type Aircraft,
 } from "@flightradar/core";
 import {
   buildBet,
@@ -174,9 +175,19 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
 
   app.get("/api/aircraft/:hex", async (req) => {
     const { hex } = z.object({ hex: z.string().regex(/^[0-9a-f]{6}$/i) }).parse(req.params);
-    const [ac] = await s.adsb.byHex([hex]);
+    const key = hex.toLowerCase();
+    // A point query and a hex query can have different reception/cache states.
+    // Keep details available for an aircraft that is already visible on the map.
+    const candidates: Aircraft[] = [
+      ...s.tracker.allLatest(),
+      ...s.traffic.list().map(x => x.aircraft),
+      ...(s.deathZoneTraffic?.list() ?? []),
+    ];
+    try { candidates.push(...await s.adsb.byHex([key])); } catch { /* use the map snapshot */ }
+    const ac = candidates.filter(a => a.hex === key && Date.now() - a.timestamp <= 120_000)
+      .sort((a, b) => b.timestamp - a.timestamp)[0];
     if (!ac) throw new HttpError(404, "aircraft_not_found");
-    const route = ac.callsign ? await s.routes.lookup(ac.callsign) : null;
+    const route = ac.callsign ? await s.routes.lookup(ac.callsign).catch(() => null) : null;
     const markets = allMarketDtos().filter((m) => m.icao24.includes(ac.hex));
     const shown = s.traffic.list().find((x) => x.aircraft.hex === ac.hex);
     const { aircraft: _a, ...movement } = shown ?? { aircraft: ac };

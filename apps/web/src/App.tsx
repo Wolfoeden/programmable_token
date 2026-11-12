@@ -48,9 +48,6 @@ function bettableFlights(list: AircraftDto[]): AircraftDto[] {
   return list.filter((a) => a.airport && a.etaMs && webcamFor(a.airport)).sort((x, y) => x.etaMs! - y.etaMs!);
 }
 
-/** Still takes a new prediction: closes 20 min before landing, needs 5 min of betting. */
-const bettable = (a: AircraftDto, now: number) => betState(a, now).kind === "open";
-
 const pageFromHash = (): InfoPage | null => {
   const h = window.location.hash.replace("#", "");
   return INFO_PAGES.some((p) => p.id === h) ? (h as InfoPage) : null;
@@ -386,7 +383,9 @@ export function App() {
   const aircraftMarkets = useMemo(() => (selectedHex ? marketList.filter((m) => m.icao24.includes(selectedHex)) : []), [marketList, selectedHex]);
   const selectedMarket = selection?.kind === "market" ? marketList.find((m) => m.id === selection.id) : undefined;
   const selState = selectedHex ? flightState(selectedHex, flights, arrivals) : null;
-  const held = selState && selState.kind !== "approaching" && liveSelected ? { name: flightName(liveSelected), text: stateText(selState, now) } : null;
+  const selectedHasMapPosition = aircraftRef.current.some(a => a.hex === selectedHex && now - a.timestamp <= 120_000);
+  const selectedDetailIsFresh = detail?.aircraft.hex === selectedHex && now - detail.aircraft.timestamp <= 120_000;
+  const held = selState && selState.kind !== "approaching" && !(selState.kind === "unknown" && (selectedHasMapPosition || selectedDetailIsFresh)) && liveSelected ? { name: flightName(liveSelected), text: stateText(selState, now) } : null;
 
 
   return (
@@ -458,6 +457,7 @@ export function App() {
       <FlightSwitcher
           flights={flights}
           selectedHex={selectedHex}
+          selectedAircraft={liveSelected?.hex === selectedHex ? liveSelected : detail?.aircraft}
           status={data.status}
           notice={notice}
           held={held}
@@ -486,8 +486,6 @@ export function App() {
           onClose={() => setSelection(null)}
           position={{ index: flights.findIndex((f) => f.hex === selection.hex), count: flights.length }}
           mine={mine}
-          nextOpen={flights.find((f) => f.hex !== selection.hex && (bettable(f, now) || !!f.markets)) ?? null}
-          onSelectFlight={(f) => (setNotice(null), selectFlight(f))}
           onStep={(dir) => {
             if (flights.length === 0) return;
             const i = flights.findIndex((f) => f.hex === selection.hex);

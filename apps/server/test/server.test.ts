@@ -27,11 +27,13 @@ import { CamTraffic } from "../src/traffic.js";
 
 class FakeAdsb implements AdsbSource {
   planes = new Map<string, Aircraft>();
+  failHex = false;
   async area() {
     return [...this.planes.values()];
   }
   async areaStrict() { return this.area(); }
   async byHex(hexes: string[]) {
+    if (this.failHex) throw new Error("Hex request unavailable");
     return hexes.map((h) => this.planes.get(h)).filter((a): a is Aircraft => !!a);
   }
   track(hexes: string[]) {
@@ -323,6 +325,23 @@ describe("server pipeline (emulator, fake flight data)", () => {
     const detail = await call<{ aircraft: Aircraft }>("GET", "/api/aircraft/abcdef");
     expect(detail.aircraft.hex).toBe(regional.hex);
     adsb.planes.delete(regional.hex);
+  });
+
+  it("keeps regional flight details and destination when a hex lookup is empty or fails", async () => {
+    const regional: Aircraft = { hex: "fedabc", callsign: "SWR9", lat: 32, lon: 54, onGround: false, timestamp: Date.now() };
+    adsb.planes.set(regional.hex, regional);
+    await call("GET", "/api/aircraft");
+    // Discovery and known-position refresh alternate; ensure this flight was discovered.
+    await deathZoneTraffic.step(); await deathZoneTraffic.step();
+    adsb.planes.delete(regional.hex);
+    for (const failed of [false, true]) {
+      adsb.failHex = failed;
+      try {
+        const detail = await call<{ aircraft: Aircraft; route: { flightNumber: string }; origin: { icao: string }; destination: { icao: string } }>("GET", "/api/aircraft/fedabc");
+        expect(detail.aircraft.hex).toBe("fedabc"); expect(detail.aircraft.callsign).toBe("SWR9");
+        expect(detail.route.flightNumber).toBe("LX9"); expect(detail.destination.icao).toBe("KLAS"); expect(detail.origin.icao).toBe("KLAX");
+      } finally { adsb.failHex = false; }
+    }
   });
 
 });

@@ -3,6 +3,8 @@ import { api } from "../api";
 import { CLOSE_LEAD_MIN, estimateEta } from "@flightradar/core/eta";
 import { distanceKm } from "@flightradar/core/geo";
 import { webcamFor } from "@flightradar/core/webcams";
+import { airportByIcao } from "@flightradar/core/airports";
+import { deathZoneAt } from "@flightradar/core/deathzones";
 import { useNow } from "../hooks";
 import { t } from "../i18n";
 import type { AircraftDetail, AircraftDto, MarketDto } from "../types";
@@ -33,9 +35,6 @@ export interface AircraftPanelProps {
   /** Position in the list of flights landing soon, and switching. */
   position?: { index: number; count: number } | null;
   onStep?: (dir: -1 | 1) => void;
-  /** The soonest other flight that still takes predictions. */
-  nextOpen?: AircraftDto | null;
-  onSelectFlight?: (a: AircraftDto) => void;
   /** The connected wallet's stakes: market id → outcome → lovelace. */
   mine?: Map<string, Map<number, bigint>>;
 }
@@ -65,10 +64,10 @@ export function AircraftPanel(p: AircraftPanelProps) {
   };
   // Use the detail only if it belongs to this aircraft (it loads asynchronously).
   const detail = p.detail?.aircraft.hex === p.hex ? p.detail : null;
-  const a = p.live ?? detail?.aircraft;
+  const a = p.live?.hex === p.hex ? p.live : detail?.aircraft;
   const route = detail?.route ?? null;
-  const origin = detail?.origin ?? null;
-  const dest = detail?.destination ?? null;
+  const origin = detail?.origin ?? airportByIcao(route?.origin ?? a?.origin) ?? null;
+  const dest = detail?.destination ?? airportByIcao(route?.destination ?? a?.airport) ?? null;
   const destIcao = a?.airport ?? route?.destination;
   const etaMs = a?.etaMs ?? (a && dest ? estimateEta(a, dest, Date.now())?.etaMs : undefined);
   const progress = a && origin && dest ? Math.min(1, Math.max(0, 1 - distanceKm(a, dest) / Math.max(1, distanceKm(origin, dest)))) : null;
@@ -86,7 +85,7 @@ export function AircraftPanel(p: AircraftPanelProps) {
   // even when the market it created shows up in the list.
   const [engaged, setEngaged] = useState(false);
   useEffect(() => setEngaged(false), [p.hex]);
-  const wantPreview = (!landingMarket || engaged) && !!a?.airport && !tooClose;
+  const wantPreview = (!landingMarket || engaged) && !!a?.airport && hasCam && !tooClose;
   useEffect(() => {
     if (!wantPreview) {
       setPreview(null);
@@ -159,10 +158,12 @@ export function AircraftPanel(p: AircraftPanelProps) {
             <span className="code">{dest?.iata || destIcao || "–"}</span>
           </div>
           <div className="route2-names">
-            <span>{origin?.city || origin?.name || "Origin"}</span>
-            <span>{dest?.city || dest?.name || "Destination"}</span>
+            <span>{origin?.city || origin?.name || (route?.origin || a?.origin ? "Origin" : "Origin not reported")}</span>
+            <span>{dest?.city || dest?.name || (destIcao ? "Destination" : "Destination not reported")}</span>
           </div>
         </div>
+
+        {a && <div className="pool-note">Position received {new Date(a.timestamp).toISOString().slice(11, 19)} UTC{a.altitudeFt !== undefined ? ` · ${a.altitudeFt.toLocaleString()} ft` : ""}{a.groundSpeedKt !== undefined ? ` · ${Math.round(a.groundSpeedKt)} kt` : ""}</div>}
 
         {unconfirmed && (
           <div className="info-note">
@@ -211,17 +212,13 @@ export function AircraftPanel(p: AircraftPanelProps) {
             }}
           />
         ) : null}
-        {!landingMarket && !showPreview &&
+        {!landingMarket && !showPreview && !((a && deathZoneAt(a.lon, a.lat)) || !a?.airport) &&
           (a?.airport && !tooClose && previewLoading ? (
             <div className="pool-note">Loading the prediction …</div>
           ) : sorted.length === 0 ? (
             <div className="closed-box">
               <div>{a?.airport ? "Betting is closed" : "No prediction for this flight."}</div>
-              {p.nextOpen && p.onSelectFlight && (
-                <button type="button" className="btn primary" onClick={() => p.onSelectFlight!(p.nextOpen!)}>
-                  Bet on {p.nextOpen.flightNumber || p.nextOpen.callsign} → {p.nextOpen.airport}
-                </button>
-              )}
+
             </div>
           ) : null)}
 

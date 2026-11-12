@@ -1,3 +1,4 @@
+import { deathZoneAt } from "@flightradar/core/deathzones";
 import { bothZones } from "../format";
 import { betLabel, type BetState } from "../betState";
 import type { AircraftDto, DataStatus } from "../types";
@@ -5,6 +6,7 @@ import type { AircraftDto, DataStatus } from "../types";
 export interface FlightSwitcherProps {
   flights: AircraftDto[];
   selectedHex: string | null;
+  selectedAircraft?: AircraftDto;
   status: DataStatus;
   onSelect: (a: AircraftDto) => void;
   notice: string | null;
@@ -20,10 +22,11 @@ export interface FlightSwitcherProps {
  * current flight, with arrows to the previous and next flight landing soon
  * (sorted by arrival).
  */
-export function FlightSwitcher({ flights, selectedHex, status, onSelect, notice, held, stateOf }: FlightSwitcherProps) {
+export function FlightSwitcher({ flights, selectedHex, selectedAircraft, status, onSelect, notice, held, stateOf }: FlightSwitcherProps) {
   const idx = flights.findIndex((f) => f.hex === selectedHex);
   const cur = idx >= 0 ? flights[idx] : undefined;
-  const target = cur ?? flights.find((f) => stateOf?.(f).kind === "open") ?? flights[0];
+  const target = selectedHex ? (cur ?? (selectedAircraft?.hex === selectedHex ? selectedAircraft : undefined)) : (flights.find(f => stateOf?.(f).kind === "open") ?? flights[0]);
+  const regional = !!target && !!deathZoneAt(target.lon, target.lat);
   const step = (d: number) => {
     if (flights.length === 0) return;
     const next = idx < 0 ? (d > 0 ? 0 : flights.length - 1) : (idx + d + flights.length) % flights.length;
@@ -31,7 +34,7 @@ export function FlightSwitcher({ flights, selectedHex, status, onSelect, notice,
   };
 
   let message: string | null = null;
-  if (flights.length === 0) {
+  if (flights.length === 0 && !target) {
     if (status === "loading") message = "Loading flights …";
     else if (status === "error") message = "Flight data not reachable. Retrying …";
     else if (status === "unavailable") message = "Flight data source not responding. Retrying …";
@@ -40,7 +43,7 @@ export function FlightSwitcher({ flights, selectedHex, status, onSelect, notice,
     message = "Flight data may be out of date.";
   }
   const warn = status === "error" || status === "unavailable";
-  const state = target && stateOf ? stateOf(target) : undefined;
+  const state = target && stateOf && !regional ? stateOf(target) : undefined;
   const open = state?.kind === "open";
 
   const prev = (
@@ -67,23 +70,25 @@ export function FlightSwitcher({ flights, selectedHex, status, onSelect, notice,
   return (
     <div className="switcher" role="group" aria-label="Choose a flight">
       <div className="sw-bar">
-        {flights.length > 0 && (
+        {(flights.length > 0 || target) && (
           <div className="sw-bar-row">
             {prev}
-            <button type="button" className="switcher-main" onClick={() => (cur ? onSelect(cur) : step(1))}>
+            <button type="button" className="switcher-main" onClick={() => target && onSelect(target)} disabled={!target}>
               <span className="switcher-count num">
                 {cur
                   ? `Flight ${idx + 1} of ${flights.length}`
-                  : held
+                  : selectedHex && target
+                    ? `Following ${target.flightNumber || target.callsign || target.hex.toUpperCase()}`
+                    : held
                     ? `Following ${held.name} · ${flights.length} other flight${flights.length === 1 ? "" : "s"}`
                     : `${flights.length} flight${flights.length === 1 ? "" : "s"} landing soon`}
               </span>
               <span className="sw-bar-what num">
-                {cur ? (
+                {target ? (
                   <>
-                    <strong>{cur.flightNumber || cur.callsign}</strong> → {cur.airport}
-                    {cur.etaMs ? ` · ETA ${bothZones(cur.etaMs).utc}` : ""}
-                    {tag(cur)}
+                    <strong>{target.flightNumber || target.callsign || target.hex.toUpperCase()}</strong>{target.airport ? ` → ${target.airport}` : ""}
+                    {target.etaMs ? ` · ETA ${bothZones(target.etaMs).utc}` : ""}
+                    {regional ? <span className="bet-tag">Safe Passage</span> : tag(target)}
                   </>
                 ) : (
                   "Show the next arrival"
@@ -105,7 +110,7 @@ export function FlightSwitcher({ flights, selectedHex, status, onSelect, notice,
             className={`bet-round${open ? " open" : ""}`}
             disabled={!target}
             onClick={() => target && onSelect(target)}
-            aria-label={target ? `Bet on ${target.flightNumber || target.callsign}` : "No flight"}
+            aria-label={target ? `Bet on ${target.flightNumber || target.callsign || target.hex.toUpperCase()}` : "No flight"}
           >
             <span className="bet-round-label">Bet</span>
             <span className="bet-round-count num">{flights.length ? (idx >= 0 ? `${idx + 1}/${flights.length}` : `${flights.length}`) : "–"}</span>
@@ -114,7 +119,8 @@ export function FlightSwitcher({ flights, selectedHex, status, onSelect, notice,
         </div>
         {target && (
           <div className="switcher-what num">
-            <strong>{target.flightNumber || target.callsign}</strong> → {target.airport}
+            <strong>{target.flightNumber || target.callsign || target.hex.toUpperCase()}</strong>{target.airport ? ` → ${target.airport}` : ""}
+            {regional && <span className="bet-tag">Safe Passage</span>}
             {state && <span className={`bet-tag ${state.kind}`}>{betLabel(state, true)}</span>}
           </div>
         )}

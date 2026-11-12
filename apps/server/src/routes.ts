@@ -3,7 +3,6 @@
  * Routes can be wrong; the ETA model refuses markets for aircraft that fly
  * away from the looked-up destination.
  */
-import { airportByIcao } from "@flightradar/core";
 import { fetchJson, Throttle, TtlCache } from "./util.js";
 
 export interface Route {
@@ -47,7 +46,11 @@ export class RouteClient implements RouteSource {
     if (!/^[A-Z0-9]{3,8}$/.test(cs)) return Promise.resolve(null);
     const hit = this.cache.get(cs);
     if (hit) return hit;
-    const p = this.fetchRoute(cs).catch(() => null);
+    const p = this.fetchRoute(cs).catch(() => null).then(route => {
+      // A transient miss must not hide the destination for six hours.
+      if (!route) this.cache.set(cs, Promise.resolve(null), 30_000);
+      return route;
+    });
     this.cache.set(cs, p);
     return p;
   }
@@ -64,7 +67,6 @@ export class RouteClient implements RouteSource {
     const origin = fr?.origin?.icao_code?.toUpperCase();
     const destination = fr?.destination?.icao_code?.toUpperCase();
     if (!fr || !origin || !destination) return null;
-    if (!airportByIcao(destination)) return null;
     const route: Route = { callsign: cs, flightNumber: fr.callsign_iata ?? "", origin, destination };
     if (fr.airline?.name) route.airline = fr.airline.name;
     return route;

@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { buildSafeCreate, buildSafeFreeze, buildSafeVerify, fetchSafeMarkets, loadSafeContracts, encodeSafeEvidence, fetchSafeEvidence, type SafeContracts, type SafeMarket } from "@flightradar/chain";
-import { SAFE_ODDS, safeCapacity, type SafeOutcome } from "@flightradar/core/safePassage";
+import { buildSafeCreate, buildSafeFreeze, buildSafeVerify, fetchSafeMarkets, loadSafeContracts, encodeSafeEvidence, fetchSafeEvidence, type SafeContracts, type SafeMarket, safeOrderContracts, fetchOrders, buildSafeBatch, buildRefunds, type Contracts, type OrderView } from "@flightradar/chain";
+import { SAFE_ODDS, safeCapacity, type SafeOutcome, type SafeDatum } from "@flightradar/core/safePassage";
 import { deathZoneAt } from "@flightradar/core/deathzones";
 import type { ChainContext } from "./chain.js";
 import type { Config } from "./config.js";
@@ -26,13 +26,15 @@ interface Journal {
   blocked: string[];
   recoveryHeld?: string[];
   evidence: Record<string, SafeEvidence>;
-  pending: Record<string, { action: "create" | "freeze" | "verify"; txHash: string; at: number; flight: string }>;
+  pending: Record<string, { action: "create" | "freeze" | "verify"; txHash: string; at: number; flight: string; zone?: string; reserve?: string; openedAt?: number }>;
 }
 
 /** Chain UTxOs hold money, confirmed states and evidence. The local file is
  * a disposable cache. Cache loss quarantines old open markets for review. */
 export class SafePassageService {
   readonly contracts: SafeContracts;
+  readonly orders: Contracts;
+  private inflight = new Map<string, number>();
   private cache: SafeMarket[] = [];
   private refreshedAt = 0;
   private refreshing?: Promise<void>;
@@ -46,6 +48,7 @@ export class SafePassageService {
   private evidenceRetryAt = 0;
   constructor(readonly cfg: Config, private ctx: ChainContext, private adsb: AdsbSource) {
     this.contracts = loadSafeContracts(ctx.network, ctx.operator.keyHash);
+    this.orders = safeOrderContracts(ctx.contracts, this.contracts);
     mkdirSync(cfg.DATA_DIR, { recursive: true });
     this.file = join(cfg.DATA_DIR, "safe-passage.json");
     this.recoveryCutoff = ctx.now();
@@ -175,25 +178,84 @@ export class SafePassageService {
       return { ok: true };
     });
   }
-  /** Funding is an explicit operator action, never a side effect of a view. */
-  fund(hex: string) {
+  /** Fund on first bet review (like MarketMaker), or explicit admin request; never on GET. */
+  fund(hex: string, reuse = false) {
     return this.lock.run(async () => {
       if (!this.cfg.SAFE_PASSAGE_ENABLED) throw new HttpError(409, "safe_disabled");
       await this.refresh(true);
+      if (reuse) {
+        const existing = this.forFlight(hex);
+        if (existing) return { marketId: existing.datum.marketId, txHash: existing.utxo.txHash };
+        const pending = Object.entries(this.journal.pending).find(([, p]) => p.flight === hex && p.action === "create");
+        if (pending) return { marketId: pending[0], txHash: pending[1].txHash };
+      }
       if (this.cache.some(m => m.datum.flight === hex && m.datum.state.kind !== "resolved") || Object.values(this.journal.pending).some(p => p.flight === hex)) throw new HttpError(409, "market_exists", "This passage already has a market or pending transaction");
       const open = this.cache.filter(m => m.datum.state.kind !== "resolved").length;
       const creating = Object.values(this.journal.pending).filter(p => p.action === "create").length;
       if (open + creating >= this.cfg.SAFE_PASSAGE_MAX_OPEN) throw new HttpError(409, "cap_reached");
       const { zone } = await this.eligible(hex);
-      let id = "";
+      let id = ""; let openedAt = 0;
       const txHash = await this.ctx.operator.run(async inputs => {
         const result = await buildSafeCreate(this.ctx.operator.lucid, this.contracts, hex, zone, BigInt(this.cfg.SAFE_PASSAGE_RESERVE_ADA) * 1_000_000n, this.ctx.now(), inputs);
-        id = result.datum.marketId; return result.tx;
+        id = result.datum.marketId; openedAt = result.datum.openedAt; return result.tx;
       });
       this.locallyCreated.add(id);
       this.journal.recoveryHeld = this.journal.recoveryHeld!.filter(x => x !== id);
-      this.journal.pending[id] = { action: "create", txHash, at: Date.now(), flight: hex }; this.save();
+      this.journal.pending[id] = { action: "create", txHash, at: Date.now(), flight: hex, zone, reserve: String(BigInt(this.cfg.SAFE_PASSAGE_RESERVE_ADA) * 1_000_000n), openedAt }; this.save();
       return { marketId: id, txHash };
+    });
+  }
+  pendingDatum(id: string): SafeDatum | undefined {
+    const p = this.journal.pending[id];
+    if (p?.action !== "create" || !p.zone || !p.reserve || !p.openedAt) return undefined;
+    return { marketId: id, flight: p.flight, zone: p.zone, reserve: BigInt(p.reserve), openedAt: p.openedAt,
+      yes: 0n, no: 0n, claimedYes: 0n, claimedNo: 0n, state: { kind: "open" } };
+  }
+  async quoteDatum(id: string) {
+    await this.refresh(true);
+    if (this.journal.blocked.includes(id) || this.journal.recoveryHeld!.includes(id)) throw new HttpError(409, "market_frozen", "Betting is suspended");
+    const pending = this.pendingDatum(id);
+    if (pending) return pending;
+    return (await this.require(id, true)).datum;
+  }
+  async openOrders(): Promise<OrderView[]> {
+    return fetchOrders(await this.ctx.newLucid(), this.orders);
+  }
+  /** Same owner-tagged order fills/refunds as normal bets, with fixed-payout coverage. */
+  async tick() {
+    if (!this.cfg.SAFE_PASSAGE_ENABLED) return;
+    return this.lock.run(async () => {
+      await this.refresh(true);
+      const now = this.ctx.now();
+      const ref = (o: { txHash: string; outputIndex: number }) => `${o.txHash}#${o.outputIndex}`;
+      for (const [key, until] of this.inflight) if (until < now) this.inflight.delete(key);
+      const orders = (await this.openOrders()).filter(o => !this.inflight.has(ref(o.utxo)));
+      const mark = (rows: OrderView[], m?: SafeMarket) => {
+        for (const o of rows) this.inflight.set(ref(o.utxo), now + 300_000);
+        if (m) this.inflight.set(ref(m.utxo), now + 300_000);
+      };
+      for (const m of this.cache) {
+        if (this.dto(m).phase !== "open" || this.inflight.has(ref(m.utxo))) continue;
+        const waiting = orders.filter(o => o.datum.marketId === m.datum.marketId && Number(o.datum.deadline) > now + 5000);
+        if (!waiting.length) continue;
+        try { await this.eligible(m.datum.flight); } catch { continue; }
+        let d = { ...m.datum }; const batch: OrderView[] = [];
+        for (const o of waiting) {
+          const b = o.datum.order;
+          if (b.kind !== "bet" || (b.outcome !== 0 && b.outcome !== 1) || (b.side ?? 0n) !== 0n || b.stake < 1_000_000n || b.stake > BigInt(this.cfg.SAFE_PASSAGE_MAX_STAKE_ADA) * 1_000_000n || b.stake > safeCapacity(d, b.outcome)) continue;
+          d = { ...d, yes: d.yes + (b.outcome === 0 ? b.stake : 0n), no: d.no + (b.outcome === 1 ? b.stake : 0n) };
+          batch.push(o); if (batch.length === 10) break;
+        }
+        if (batch.length) {
+          await this.ctx.operator.run(inputs => buildSafeBatch(this.ctx.operator.lucid, this.contracts, this.orders, m, batch, now, inputs));
+          mark(batch, m);
+        }
+      }
+      const expired = orders.filter(o => !this.inflight.has(ref(o.utxo)) && Number(o.datum.deadline) < now - 60_000).slice(0, 20);
+      if (expired.length) {
+        await this.ctx.operator.run(inputs => buildRefunds(this.ctx.operator.lucid, this.orders, expired, now, { walletUtxos: inputs }));
+        mark(expired);
+      }
     });
   }
   freeze(id: string, reason: string, sources: string[]) {

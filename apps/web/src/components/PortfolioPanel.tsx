@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { SafePassagePositions } from "./SafePassageCard";
 import { api } from "../api";
 import { ada } from "../format";
@@ -20,6 +21,8 @@ export interface PortfolioPanelProps {
 }
 
 export function PortfolioPanel(p: PortfolioPanelProps) {
+  const [safeEmpty, setSafeEmpty] = useState(false);
+  useEffect(() => setSafeEmpty(false), [p.wallet.id]);
   const { data, error } = usePoll(async () => api.portfolio(await p.wallet.payload()), 10_000, [p.wallet.id]);
   return (
     <aside className="panel" aria-label={t.portfolio}>
@@ -36,9 +39,9 @@ export function PortfolioPanel(p: PortfolioPanelProps) {
         </button>
       </div>
       <div className="panel-body">
-        <SafePassagePositions wallet={p.wallet} />
+        <SafePassagePositions key={p.wallet.id} wallet={p.wallet} onEmpty={setSafeEmpty} />
         {error !== null && <div className="muted">{errorText(error)}</div>}
-        {data && data.positions.length === 0 && data.orders.length === 0 && <div className="muted">{t.noPositions}</div>}
+        {safeEmpty && data && data.positions.length === 0 && data.orders.length === 0 && <div className="muted">{t.noPositions}</div>}
         {(() => {
           const lost = (data?.positions ?? []).filter((pos) => pos.market?.phase === "resolved" && BigInt(pos.claimable) === 0n).length;
           return lost > 0 ? (

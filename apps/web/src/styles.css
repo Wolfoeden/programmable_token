@@ -2278,14 +2278,3 @@ details.rules summary {
 }
 
 /* Safe Passage lives inside the existing flight/portfolio panels. */
-.safe-passage{border-color:#743640;border-top:2px solid #ff3545;padding:14px}.safe-passage>.market-head{padding:0}.safe-passage .pool-note{padding:0}
-.safe-choices{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}
-.safe-choice{border:1px solid #47515a;border-radius:8px;padding:12px;color:#fff;font-weight:700;background:#173a30}
-.safe-choice.no{background:#58232b}.safe-choice strong{display:block;font-size:23px;margin-top:4px;font-variant-numeric:tabular-nums}
-.safe-choice.chosen{outline:2px solid #e8ecf1;outline-offset:2px}.safe-choice:disabled{opacity:.55;cursor:default}
-.safe-stake{display:grid;grid-template-columns:1fr 110px;align-items:center;gap:12px;margin:14px 0 6px}
-.safe-stake input{min-width:0;width:100%;padding:10px;background:#20262d;color:#fff;border:1px solid #46515e;border-radius:6px}
-.safe-review{padding:12px 0;border-top:1px solid #46515e;margin-top:12px;line-height:1.6}
-.safe-admin{margin-top:16px;padding-top:10px;border-top:1px solid #46515e}.safe-admin label{display:block;margin:10px 0;font-size:12px}
-.safe-admin textarea,.safe-admin select,.safe-admin input:not([type=checkbox]){display:block;width:100%;margin-top:5px;background:#20262d;border:1px solid #46515e;color:#fff;padding:8px;border-radius:4px}
-.safe-admin textarea{min-height:65px}.safe-passage details{margin-top:12px;font-size:12px;overflow-wrap:anywhere}.safe-passage summary{cursor:pointer}

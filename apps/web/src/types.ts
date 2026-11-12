@@ -205,6 +205,8 @@ export interface SafeMarketDto {
   evidence: { reason: string; sources: string[]; winner?: 0 | 1 | null } | null;
   criterion: string;
 }
-export interface SafeFlightResponse { enabled: boolean; market: SafeMarketDto | null; reservePerMarket?: string }
-export interface SafeQuote { tx: string; payout: string; stake: string; fee: string; outcome: 0 | 1; marketId: string; expiresAt: number }
+export interface SafeFlightResponse { enabled: boolean; market: SafeMarketDto | null; reservePerMarket?: string; previewLimits?: [string, string] }
+export interface SafeQuote { tx: string; payout: string; stake: string; fee: string; batcherFee: string; deposit: string; outcome: 0 | 1; marketId: string; hex: string; expiresAt: number }
 export interface SafePosition { market: SafeMarketDto; yes: string; no: string; claimable: string }
+
+export interface SafeOrder { txHash: string; outputIndex: number; marketId: string; outcome: number | null; stake: string; deadline: number }

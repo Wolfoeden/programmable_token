@@ -2,13 +2,52 @@ import { applyDoubleCborEncoding, applyParamsToScript, Constr, Data, validatorTo
   type Assets, type LucidEvolution, type Network, type Script, type UTxO } from "@lucid-evolution/lucid";
 import { SAFE_BUFFER, SAFE_CLAIM_WINDOW, safeClaim, safeCovered, type SafeDatum, type SafeOutcome } from "@flightradar/core/safePassage";
 import blueprint from "../../../onchain/plutus.json" with { type: "json" };
-import { MintRedeemer, optionInt } from "./codec.js";
+import { MintRedeemer, OrderRedeemer, encodeOrderDatum, outRefTag, optionInt } from "./codec.js";
+import { keyHashOf } from "./tx.js";
+import { DEFAULT_BATCHER_FEE, ORDER_DEPOSIT } from "./tx.js";
+import type { Contracts } from "./contracts.js";
+import type { OrderView } from "./indexer.js";
 import { marketIdFromSeed, marketNftName, positionName, parsePositionName, utf8ToHex, hexToUtf8 } from "./tokens.js";
 
 export interface SafeEvidenceOutput { address: string; datum: string }
 
 export interface SafeContracts { script: Script; policy: string; address: string; operatorKeyHash: string }
 export interface SafeMarket { datum: SafeDatum; utxo: UTxO }
+/** Reuse the existing order validator, parameterized for Safe Passage receipts.
+ * Its bet/cancel/refund branches are shared; its parimutuel claim branch is not used. */
+export function safeOrderContracts(base: Contracts, c: SafeContracts): Contracts {
+  const v = blueprint.validators.find(v => v.title === "order.order.spend")!;
+  const order: Script = { type: "PlutusV3", script: applyDoubleCborEncoding(applyParamsToScript(v.compiledCode, [c.policy, base.jackpotHash])) };
+  return { ...base, order, orderHash: validatorToScriptHash(order), orderAddress: validatorToAddress(base.network, order) };
+}
+export async function buildSafeBetOrder(lucid: LucidEvolution, orders: Contracts, id: string, outcome: SafeOutcome, stake: bigint, now: number) {
+  if (stake < 1_000_000n || (outcome !== 0 && outcome !== 1)) throw new Error("Invalid bet");
+  const owner = await lucid.wallet().address();
+  return lucid.newTx().pay.ToContract(orders.orderAddress, { kind: "inline", value: encodeOrderDatum({
+    owner, ownerKey: keyHashOf(owner), marketId: id, order: { kind: "bet", outcome, stake },
+    batcherFee: DEFAULT_BATCHER_FEE, deadline: BigInt(now + 5 * 60_000),
+  }) }, { lovelace: stake + DEFAULT_BATCHER_FEE + ORDER_DEPOSIT }).validTo(now + 60_000).complete();
+}
+export async function buildSafeBatch(lucid: LucidEvolution, c: SafeContracts, orders: Contracts, m: SafeMarket, batch: OrderView[], now: number, walletUtxos?: UTxO[]) {
+  if (m.datum.state.kind !== "open" || !batch.length) throw new Error("Market unavailable");
+  let d = { ...m.datum }; const mint: Assets = {};
+  let tx = lucid.newTx().collectFrom([m.utxo], action(0)).attach.SpendingValidator(c.script)
+    .collectFrom(batch.map(o => o.utxo), OrderRedeemer.fill()).attach.SpendingValidator(orders.order);
+  for (const o of batch) {
+    const bet = o.datum.order;
+    if (o.datum.marketId !== d.marketId || bet.kind !== "bet" || bet.stake < 1_000_000n || (bet.outcome !== 0 && bet.outcome !== 1) || (bet.side ?? 0n) !== 0n || Number(o.datum.deadline) <= now) throw new Error("Invalid order");
+    d = { ...d, yes: d.yes + (bet.outcome === 0 ? bet.stake : 0n), no: d.no + (bet.outcome === 1 ? bet.stake : 0n) };
+    const receipt = c.policy + positionName(d.marketId, bet.outcome);
+    mint[receipt] = (mint[receipt] ?? 0n) + bet.stake;
+    tx = tx.pay.ToAddressWithData(o.datum.owner, { kind: "inline", value: outRefTag(o.utxo.txHash, o.utxo.outputIndex) },
+      { ...o.utxo.assets, lovelace: (o.utxo.assets.lovelace ?? 0n) - bet.stake - o.datum.batcherFee, [receipt]: bet.stake });
+  }
+  if (!safeCovered(d)) throw new Error("Covered stake limit exceeded");
+  return tx.mintAssets(mint, MintRedeemer.mintOrBurn()).attach.MintingPolicy(c.script)
+    .pay.ToContract(...continuation(c, m, d, value(m) + d.yes + d.no - m.datum.yes - m.datum.no))
+    .validFrom(now).validTo(Math.min(now + 60_000, ...batch.map(o => Number(o.datum.deadline))))
+    .complete(walletUtxos ? { presetWalletInputs: walletUtxos } : {});
+}
 export function loadSafeContracts(network: Network, operatorKeyHash: string): SafeContracts {
   const v = blueprint.validators.find(v => v.title === "safe_passage.safe_market.spend");
   if (!v) throw new Error("Safe Passage validator missing; rebuild onchain/plutus.json");

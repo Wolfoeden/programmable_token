@@ -180,7 +180,7 @@ export function AircraftPanel(p: AircraftPanelProps) {
           </div>
         )}
 
-        <SafePassageCard key={p.hex} hex={p.hex} aircraft={a} wallet={p.wallet} operator={p.operator} onConnect={p.onConnect} />
+        <SafePassageCard key={`${p.hex}:${p.wallet?.id ?? "none"}`} hex={p.hex} aircraft={a} wallet={p.wallet} operator={p.operator} onConnect={p.onConnect} />
 
         {sorted.filter((m) => !(showPreview && m.kind === "landing_before")).map((m) => (
           <MarketCard

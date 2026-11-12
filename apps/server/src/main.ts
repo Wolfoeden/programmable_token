@@ -76,6 +76,7 @@ async function main() {
   loop("tracker", 10_000, () => tracker.poll());
   loop("tracker-final", 2000, () => tracker.pollFinal());
   loop("oracle", 15_000, () => oracle.tick(index.live));
+  loop("safe-passage-batcher", 10_000, () => safePassage.tick());
   loop("batcher", 10_000, () => batcher.tick(index.live, index.orders));
   loop("sweeper", 10 * 60_000, () => oracle.sweep(index.live));
   loop("seed-reclaim", 2 * 60_000, () => oracle.reclaimSeeds(index.live, (id) => index.isStale(id)));

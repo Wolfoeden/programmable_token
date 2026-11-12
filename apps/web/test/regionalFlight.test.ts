@@ -31,7 +31,8 @@ describe("regional aircraft selection regression", () => {
       markets: [], wallet: null, operator: null, onConnect: () => undefined, scheduleAvailable: false, busy: false, dataUpdatedAt: Date.now(), onPrepare: async () => null, onConfirm: async () => false, onCreate: async () => null, onClose: () => undefined,
     }));
     expect(html).toContain("DUB"); expect(html).toContain("Dublin");
-    expect(html).toContain("Position received");
+    // Altitude, speed and position age are deliberately not shown in the panel.
+    expect(html).not.toContain("Position received");
     expect(html).not.toContain("No prediction for this flight");
     expect(html).not.toContain("Bet on OTHER456");
   });

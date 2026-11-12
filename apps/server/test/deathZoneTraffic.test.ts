@@ -57,3 +57,19 @@ describe("regional live traffic", () => {
     expect(traffic.status()).toBe("unavailable"); expect(traffic.list(now)).toEqual([]);
   });
 });
+
+describe("regional routes for the map", () => {
+  it("looks up where an aircraft over the red areas comes from and goes to", async () => {
+    const now = Date.now();
+    const ac: Aircraft = { hex: "abc999", callsign: "THY760", lon: 54, lat: 32, onGround: false, timestamp: now };
+    const adsb = { area: vi.fn(async () => []), areaStrict: vi.fn(async () => [ac]), byHex: vi.fn(async () => [ac]), track: vi.fn(async () => []), byCallsign: vi.fn(async () => []) };
+    const lookup = vi.fn(async () => ({ callsign: "THY760", flightNumber: "TK760", origin: "LTFM", destination: "OMDB" }));
+    const traffic = new DeathZoneTraffic(adsb, { lookup });
+    traffic.touch();
+    await traffic.step(now);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(traffic.routeOf(ac)).toEqual({ from: "LTFM", to: "OMDB", flightNumber: "TK760" });
+    await traffic.step(now + 1000);
+    expect(lookup).toHaveBeenCalledTimes(1); // cached per callsign
+  });
+});

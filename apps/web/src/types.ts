@@ -47,6 +47,9 @@ export interface AircraftDto {
   phase?: "landing" | "takeoff";
   airport?: string;
   origin?: string;
+  /** Over the red areas: route from the route database (ICAO), for the map lines. */
+  routeFrom?: string;
+  routeTo?: string;
   /** Destination confirmed (unambiguous); only confirmed flights take predictions. */
   confirmed?: boolean;
   flightNumber?: string;

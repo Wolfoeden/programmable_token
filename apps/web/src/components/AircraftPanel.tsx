@@ -35,6 +35,9 @@ export interface AircraftPanelProps {
   /** Position in the list of flights landing soon, and switching. */
   position?: { index: number; count: number } | null;
   onStep?: (dir: -1 | 1) => void;
+  /** The soonest other flight that still takes predictions. */
+  nextOpen?: AircraftDto | null;
+  onSelectFlight?: (a: AircraftDto) => void;
   /** The connected wallet's stakes: market id → outcome → lovelace. */
   mine?: Map<string, Map<number, bigint>>;
 }
@@ -163,8 +166,6 @@ export function AircraftPanel(p: AircraftPanelProps) {
           </div>
         </div>
 
-        {a && <div className="pool-note">Position received {new Date(a.timestamp).toISOString().slice(11, 19)} UTC{a.altitudeFt !== undefined ? ` · ${a.altitudeFt.toLocaleString()} ft` : ""}{a.groundSpeedKt !== undefined ? ` · ${Math.round(a.groundSpeedKt)} kt` : ""}</div>}
-
         {unconfirmed && (
           <div className="info-note">
             <span className="info-icon" aria-hidden>
@@ -218,7 +219,11 @@ export function AircraftPanel(p: AircraftPanelProps) {
           ) : sorted.length === 0 ? (
             <div className="closed-box">
               <div>{a?.airport ? "Betting is closed" : "No prediction for this flight."}</div>
-
+              {p.nextOpen && p.onSelectFlight && (
+                <button type="button" className="btn primary" onClick={() => p.onSelectFlight!(p.nextOpen!)}>
+                  Bet on {p.nextOpen.flightNumber || p.nextOpen.callsign} → {p.nextOpen.airport}
+                </button>
+              )}
             </div>
           ) : null)}
 

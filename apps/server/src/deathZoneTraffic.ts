@@ -1,6 +1,14 @@
 import type { Aircraft } from "@flightradar/core";
 import { deathZoneAt, deathZoneTiles } from "@flightradar/core/deathzones";
 import type { AdsbSource } from "./adsb.js";
+import type { RouteSource } from "./routes.js";
+
+/** Where an aircraft over the red areas comes from and goes to (route data, may be wrong). */
+export interface RegionalRoute {
+  from: string;
+  to: string;
+  flightNumber?: string;
+}
 
 const MAX_AGE = 120_000;
 
@@ -17,7 +25,34 @@ export class DeathZoneTraffic {
   private touchedAt = 0;
   updatedAt = 0;
   private failed = false;
-  constructor(private adsb: AdsbSource) {}
+  /** Route per callsign; looked up once in the background (cached by the route source). */
+  private routes = new Map<string, RegionalRoute | null>();
+  constructor(
+    private adsb: AdsbSource,
+    private routeSource?: RouteSource,
+  ) {}
+
+  /** Route of an aircraft, if known. */
+  routeOf(a: Aircraft): RegionalRoute | undefined {
+    return (a.callsign && this.routes.get(a.callsign)) || undefined;
+  }
+
+  private lookupRoutes(list: Aircraft[]): void {
+    if (!this.routeSource) return;
+    for (const a of list) {
+      const cs = a.callsign;
+      if (!cs || this.routes.has(cs)) continue;
+      this.routes.set(cs, null); // in flight; avoids repeated lookups
+      void this.routeSource
+        .lookup(cs)
+        .then((r) => {
+          if (r?.origin && r.destination) this.routes.set(cs, { from: r.origin, to: r.destination, ...(r.flightNumber ? { flightNumber: r.flightNumber } : {}) });
+          else this.routes.delete(cs);
+        })
+        .catch(() => this.routes.delete(cs));
+    }
+    if (this.routes.size > 5000) this.routes.clear();
+  }
 
   touch() { this.touchedAt = Date.now(); }
   list(now = Date.now()): Aircraft[] {
@@ -50,6 +85,7 @@ export class DeathZoneTraffic {
           if (!previous || a.timestamp >= previous.timestamp) this.planes.set(a.hex, a);
         } else if ((this.planes.get(a.hex)?.timestamp ?? 0) <= a.timestamp) this.planes.delete(a.hex);
       }
+      this.lookupRoutes(this.list(now));
       this.updatedAt = now;
       this.failed = false;
     } catch {

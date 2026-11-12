@@ -486,6 +486,8 @@ export function App() {
           onClose={() => setSelection(null)}
           position={{ index: flights.findIndex((f) => f.hex === selection.hex), count: flights.length }}
           mine={mine}
+          nextOpen={flights.find((f) => f.hex !== selection.hex && betState(f, now).kind === "open") ?? null}
+          onSelectFlight={(f) => (setNotice(null), selectFlight(f))}
           onStep={(dir) => {
             if (flights.length === 0) return;
             const i = flights.findIndex((f) => f.hex === selection.hex);

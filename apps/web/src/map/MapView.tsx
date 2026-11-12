@@ -90,6 +90,8 @@ export function MapView(props: MapViewProps) {
       map.addSource("airports", { type: "geojson", data: empty });
       map.addSource("origins", { type: "geojson", data: empty });
       map.addSource("flows", { type: "geojson", data: empty });
+      map.addSource("regional-flows", { type: "geojson", data: empty });
+      map.addSource("regional-ends", { type: "geojson", data: empty });
       // Where each shown flight came from (dashed) and where it goes (faint).
       map.addLayer({
         id: "flows-flown",
@@ -104,6 +106,34 @@ export function MapView(props: MapViewProps) {
         source: "flows",
         filter: ["==", ["get", "leg"], "ahead"],
         paint: { "line-color": "#3ddc97", "line-width": 1.2, "line-opacity": 0.35 },
+      });
+      // Aircraft over the red areas: where they come from (dashed) and go to.
+      map.addLayer({
+        id: "regional-flown",
+        type: "line",
+        source: "regional-flows",
+        filter: ["==", ["get", "leg"], "flown"],
+        paint: { "line-color": "#ff9aa5", "line-width": 1.3, "line-opacity": 0.55, "line-dasharray": [1.5, 2] },
+      });
+      map.addLayer({
+        id: "regional-ahead",
+        type: "line",
+        source: "regional-flows",
+        filter: ["==", ["get", "leg"], "ahead"],
+        paint: { "line-color": "#ffd6db", "line-width": 1.3, "line-opacity": 0.45 },
+      });
+      map.addLayer({
+        id: "regional-ends",
+        type: "circle",
+        source: "regional-ends",
+        paint: { "circle-radius": 3.5, "circle-color": "#0f1016", "circle-stroke-color": "#ff9aa5", "circle-stroke-width": 1.5 },
+      });
+      map.addLayer({
+        id: "regional-ends-label",
+        type: "symbol",
+        source: "regional-ends",
+        layout: { "text-field": ["get", "iata"], "text-size": 11, "text-offset": [0, 1.1], "text-anchor": "top", "text-font": ["Noto Sans Regular"], "text-optional": true },
+        paint: { "text-color": "#ffb3bc", "text-halo-color": "#0b0d10", "text-halo-width": 1.2 },
       });
       map.addLayer({
         id: "origins",
@@ -355,6 +385,30 @@ export function MapView(props: MapViewProps) {
           features: [...origins.values()].map((o) => ({ type: "Feature", geometry: { type: "Point", coordinates: [o.lon, o.lat] }, properties: { iata: o.iata || o.icao } })),
         });
         (map.getSource("flows") as GeoJSONSource | undefined)?.setData({ type: "FeatureCollection", features: legs });
+
+        // Over the red areas: from where to where (route data, may be wrong).
+        const rLegs: GeoFeature[] = [];
+        const ends = new Map<string, { lat: number; lon: number; iata: string; icao: string }>();
+        for (const f of features) {
+          const a = aircraft.current.get(String(f.properties.hex));
+          if (!a?.routeFrom || !a.routeTo || a.airport) continue;
+          const o = find(a.routeFrom);
+          const d = find(a.routeTo);
+          const pos = { lon: f.geometry.coordinates[0]!, lat: f.geometry.coordinates[1]! };
+          if (o) {
+            ends.set(o.icao, o);
+            rLegs.push({ type: "Feature", geometry: { type: "LineString", coordinates: greatCircle(o, pos, 32) }, properties: { leg: "flown" } });
+          }
+          if (d) {
+            ends.set(d.icao, d);
+            rLegs.push({ type: "Feature", geometry: { type: "LineString", coordinates: greatCircle(pos, d, 32) }, properties: { leg: "ahead" } });
+          }
+        }
+        (map.getSource("regional-flows") as GeoJSONSource | undefined)?.setData({ type: "FeatureCollection", features: rLegs });
+        (map.getSource("regional-ends") as GeoJSONSource | undefined)?.setData({
+          type: "FeatureCollection",
+          features: [...ends.values()].map((o) => ({ type: "Feature", geometry: { type: "Point", coordinates: [o.lon, o.lat] }, properties: { iata: o.iata || o.icao } })),
+        });
       }
 
       const t = trail.current;

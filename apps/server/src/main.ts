@@ -32,9 +32,9 @@ async function main() {
     }
   }
   const adsb = new AdsbClient(cfg.ADSB_BASE_URL, cfg.ADSB_FALLBACK_URL);
-  const deathZoneTraffic = new DeathZoneTraffic(adsb);
-  const safePassage = new SafePassageService(cfg, ctx, adsb);
   const routes = new RouteClient(cfg.ROUTE_BASE_URL);
+  const deathZoneTraffic = new DeathZoneTraffic(adsb, routes);
+  const safePassage = new SafePassageService(cfg, ctx, adsb);
   const schedule: ScheduleProvider | undefined = cfg.AERODATABOX_KEY
     ? new AeroDataBox(cfg.AERODATABOX_KEY, cfg.AERODATABOX_HOST)
     : cfg.DEMO

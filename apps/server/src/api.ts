@@ -152,8 +152,11 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
     }
     for (const a of s.deathZoneTraffic?.list() ?? []) {
       const previous = out.get(a.hex);
-      if (!previous) out.set(a.hex, aircraftDto(a, counts.get(a.hex) ?? 0));
-      else if (a.timestamp > previous.timestamp) out.set(a.hex, { ...previous, ...aircraftDto(a, counts.get(a.hex) ?? 0) });
+      const r = s.deathZoneTraffic!.routeOf(a);
+      // `routeFrom`/`routeTo`: where it comes from and goes to, for the map lines.
+      const dto = { ...aircraftDto(a, counts.get(a.hex) ?? 0), ...(r ? { routeFrom: r.from, routeTo: r.to, ...(r.flightNumber && !previous?.flightNumber ? { flightNumber: r.flightNumber } : {}) } : {}) };
+      if (!previous) out.set(a.hex, dto);
+      else if (a.timestamp > previous.timestamp) out.set(a.hex, { ...previous, ...dto });
     }
     return {
       now: Date.now(),

@@ -1,5 +1,6 @@
 /** Entry point: wires data sources, chain, oracle, batcher and HTTP API. */
 import { DeathZoneTraffic } from "./deathZoneTraffic.js";
+import { SafePassageService } from "./safePassage.js";
 import { AdsbClient } from "./adsb.js";
 import { buildApi } from "./api.js";
 import { Batcher } from "./batcher.js";
@@ -32,6 +33,7 @@ async function main() {
   }
   const adsb = new AdsbClient(cfg.ADSB_BASE_URL, cfg.ADSB_FALLBACK_URL);
   const deathZoneTraffic = new DeathZoneTraffic(adsb);
+  const safePassage = new SafePassageService(cfg, ctx, adsb);
   const routes = new RouteClient(cfg.ROUTE_BASE_URL);
   const schedule: ScheduleProvider | undefined = cfg.AERODATABOX_KEY
     ? new AeroDataBox(cfg.AERODATABOX_KEY, cfg.AERODATABOX_HOST)
@@ -50,7 +52,7 @@ async function main() {
   const batcher = new Batcher(ctx);
 
   await index.refresh();
-  const app = await buildApi({ cfg, ctx, index, adsb, routes, schedule, store, maker, traffic, tracker, shadow, oracle, deathZoneTraffic });
+  const app = await buildApi({ cfg, ctx, index, adsb, routes, schedule, store, maker, traffic, tracker, shadow, oracle, deathZoneTraffic, safePassage });
   await app.listen({ port: cfg.PORT, host: cfg.HOST });
   log.info(`listening on http://${cfg.HOST}:${cfg.PORT}`, { demo: cfg.DEMO, network: ctx.network, schedule: schedule?.name ?? "none" });
 

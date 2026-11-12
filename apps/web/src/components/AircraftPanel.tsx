@@ -6,12 +6,17 @@ import { webcamFor } from "@flightradar/core/webcams";
 import { useNow } from "../hooks";
 import { t } from "../i18n";
 import type { AircraftDetail, AircraftDto, MarketDto } from "../types";
+import { SafePassageCard } from "./SafePassageCard";
+import type { AppWallet } from "../wallet";
 import { LiveStream } from "./LiveStream";
 import { MarketCard, type MarketCardProps } from "./MarketCard";
 import { RulesPanel } from "./RulesPanel";
 
 export interface AircraftPanelProps {
   hex: string;
+  wallet: AppWallet | null;
+  operator: string | null;
+  onConnect: () => void;
   live: AircraftDto | undefined;
   detail: AircraftDetail | null;
   markets: MarketDto[];
@@ -173,6 +178,8 @@ export function AircraftPanel(p: AircraftPanelProps) {
             {p.arrivalNote}
           </div>
         )}
+
+        <SafePassageCard key={p.hex} hex={p.hex} aircraft={a} wallet={p.wallet} operator={p.operator} onConnect={p.onConnect} />
 
         {sorted.filter((m) => !(showPreview && m.kind === "landing_before")).map((m) => (
           <MarketCard

@@ -469,6 +469,9 @@ export function App() {
       {selection?.kind === "aircraft" && (
         <AircraftPanel
           hex={selection.hex}
+          wallet={wallet}
+          operator={operator}
+          onConnect={() => setWalletDialog(true)}
           live={liveSelected}
           detail={detail}
           markets={aircraftMarkets}

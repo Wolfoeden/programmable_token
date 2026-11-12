@@ -193,3 +193,18 @@ export interface Portfolio {
 }
 
 export type { FlightRef, Question };
+
+
+export interface SafeMarketDto {
+  id: string; hex: string; zone: string; openedAt: number;
+  phase: "open" | "frozen" | "resolved" | "updating";
+  recoveryHold?: boolean;
+  chainState: "open" | "frozen" | "resolved";
+  odds: [string, string]; reserve: string; stakes: [string, string]; limits: [string, string]; minStake: string;
+  winner: 0 | 1 | null; evidenceHash: string | null; claimDeadline: number | null;
+  evidence: { reason: string; sources: string[]; winner?: 0 | 1 | null } | null;
+  criterion: string;
+}
+export interface SafeFlightResponse { enabled: boolean; market: SafeMarketDto | null; reservePerMarket?: string }
+export interface SafeQuote { tx: string; payout: string; stake: string; fee: string; outcome: 0 | 1; marketId: string; expiresAt: number }
+export interface SafePosition { market: SafeMarketDto; yes: string; no: string; claimable: string }

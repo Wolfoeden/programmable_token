@@ -6,6 +6,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { destinationPoint, KM_PER_NM } from "@flightradar/core/geo";
 import { api } from "../api";
 import type { AircraftDto, AirportDto, Arrival, DataStatus } from "../types";
+import { addDeathZones } from "./deathZones";
 import { greatCircle } from "./greatCircle";
 import { diamondImage, planeImage, ringImage } from "./icons";
 
@@ -78,6 +79,7 @@ export function MapView(props: MapViewProps) {
     map.once("idle", fold);
 
     map.on("load", async () => {
+      addDeathZones(map);
       map.addImage("plane", planeImage(64), { sdf: true, pixelRatio: 2 });
       map.addImage("ring", ringImage(64), { sdf: true, pixelRatio: 2 });
       map.addImage("diamond", diamondImage(48), { pixelRatio: 2 });

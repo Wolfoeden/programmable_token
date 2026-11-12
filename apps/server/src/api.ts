@@ -35,6 +35,7 @@ import {
   positionsIn,
   unit,
 } from "@flightradar/chain";
+import type { DeathZoneTraffic } from "./deathZoneTraffic.js";
 import type { AdsbSource } from "./adsb.js";
 import { decodeUtxo, encodeUtxo, type ChainContext } from "./chain.js";
 import type { ChainIndex } from "./chainIndex.js";
@@ -60,6 +61,7 @@ export interface Services {
   store: Store;
   maker: MarketMaker;
   traffic: CamTraffic;
+  deathZoneTraffic?: DeathZoneTraffic;
   tracker: Tracker;
   /** Shadow log of model, outcomes and bets (optional in tests). */
   shadow?: ShadowLog;
@@ -134,6 +136,7 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
    */
   app.get("/api/aircraft", async () => {
     s.traffic.touch();
+    s.deathZoneTraffic?.touch();
     const counts = openMarketsByHex();
     const out = new Map<string, ReturnType<typeof aircraftDto>>();
     for (const a of s.tracker.allLatest()) out.set(a.hex, aircraftDto(a, counts.get(a.hex) ?? 0));
@@ -143,8 +146,14 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
       const { aircraft: _a, ...movement } = x;
       out.set(ac.hex, aircraftDto(ac, counts.get(ac.hex) ?? 0, movement));
     }
+    for (const a of s.deathZoneTraffic?.list() ?? []) {
+      const previous = out.get(a.hex);
+      if (!previous) out.set(a.hex, aircraftDto(a, counts.get(a.hex) ?? 0));
+      else if (a.timestamp > previous.timestamp) out.set(a.hex, { ...previous, ...aircraftDto(a, counts.get(a.hex) ?? 0) });
+    }
     return {
       now: Date.now(),
+      regionalTraffic: s.deathZoneTraffic ? { status: s.deathZoneTraffic.status(), updatedAt: s.deathZoneTraffic.updatedAt || null } : null,
       status: s.traffic.status(),
       updatedAt: s.traffic.updatedAt || null,
       aircraft: [...out.values()],

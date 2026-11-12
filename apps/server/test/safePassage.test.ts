@@ -8,6 +8,7 @@ import { createChain, encodeUtxo, type ChainContext } from "../src/chain.js";
 import { SafePassageService } from "../src/safePassage.js";
 import { registerSafePassageApi } from "../src/safePassageApi.js";
 import { HttpError } from "../src/util.js";
+import { encodeSafeEvidence, decodeSafeEvidence } from "@flightradar/chain";
 import type { AdsbSource } from "../src/adsb.js";
 
 const token = "safe-test-operator-token";
@@ -43,11 +44,23 @@ describe("Safe Passage operator/API workflow", () => {
     const second = await app.inject({ method: "POST", url: "/api/admin/safe-passage/fund", headers, payload: { hex: "defabc", confirmReserve: true } });
     expect(second.statusCode).toBe(409);
   });
+  it("quarantines an old open market after total cache loss and allows explicit restart review", async () => {
+    const restored = new SafePassageService({ ...cfg, DATA_DIR: mkdtempSync(join(tmpdir(), "safe-empty-")) }, ctx, adsb);
+    await expect(restored.require(id, true)).rejects.toThrow("Betting is suspended");
+    const m = await restored.require(id);
+    expect(restored.dto(m)).toMatchObject({ phase: "frozen", chainState: "open", recoveryHold: true });
+    await restored.resumeAfterRestart(id, "No outstanding incident; checked after restart");
+    expect(restored.dto(await restored.require(id, true)).phase).toBe("open");
+    expect((await app.inject({ method: "POST", url: `/api/admin/safe-passage/${id}/resume-after-restart`, payload: { reviewed: true, reason: "No outstanding incident after restart" } })).statusCode).toBe(401);
+  });
   it("quotes the exact fixed payout and rejects an uncovered stake", async () => {
     const w = ctx.demoWallets[0]!;
     const payload = { address: w.account.address, utxos: (await ctx.provider.getUtxos(w.account.address)).map(encodeUtxo), marketId: id, outcome: 1, stake: "1000000" };
     const quote = await app.inject({ method: "POST", url: "/api/safe-passage/quote", payload });
     expect(quote.statusCode, quote.body).toBe(200); expect(quote.json().payout).toBe("1000000000");
+    const lucid = await ctx.newLucid(); lucid.selectWallet.fromSeed(w.account.seedPhrase);
+    await (await lucid.fromTx(quote.json().tx).sign.withWallet().complete()).submit();
+    ctx.emulator!.awaitBlock(1); await service.refresh(true);
     expect((await app.inject({ method: "POST", url: "/api/safe-passage/quote", payload: { ...payload, stake: "2000000" } })).statusCode).toBe(409);
   });
   it("keeps a suspicion fail-closed across a submission failure and a restart", async () => {
@@ -66,6 +79,29 @@ describe("Safe Passage operator/API workflow", () => {
     expect(claim.statusCode).toBe(409);
     expect((await app.inject("/api/safe-passage/flight/abcdef")).json().market.phase).toBe("frozen");
   });
+  it("recovers the full frozen evidence from chain without the old data directory", async () => {
+    const restored = new SafePassageService({ ...cfg, DATA_DIR: mkdtempSync(join(tmpdir(), "safe-frozen-")) }, ctx, adsb);
+    const m = await restored.require(id); const dto = restored.dto(m);
+    expect(dto).toMatchObject({ phase: "frozen", chainState: "frozen", recoveryHold: false });
+    expect(dto.evidence?.reason).toBe("Unconfirmed incident report needs investigation");
+    await expect(restored.require(id, true)).rejects.toThrow("Betting is suspended");
+    await expect(restored.resumeAfterRestart(id, "Cannot reopen confirmed frozen market")).rejects.toThrow("no_recovery_hold");
+  });
+  it("ignores archive payloads that do not match the on-chain evidence hash", async () => {
+    const original = ctx.provider.getUtxos.bind(ctx.provider);
+    const spy = vi.spyOn(ctx.provider, "getUtxos").mockImplementation(async address => {
+      const rows = await original(address);
+      if (address !== ctx.contracts.metadataAddress) return rows;
+      return rows.map(u => {
+        const row = u.datum ? decodeSafeEvidence(u.datum) : null;
+        return row ? { ...u, datum: encodeSafeEvidence(row.hash, row.json.replace("Unconfirmed", "FORGED")) } : u;
+      });
+    });
+    try {
+      const restored = new SafePassageService({ ...cfg, DATA_DIR: mkdtempSync(join(tmpdir(), "safe-forged-")) }, ctx, adsb);
+      expect(restored.dto(await restored.require(id)).evidence).toBe(null);
+    } finally { spy.mockRestore(); }
+  });
   it("rejects NO without independent reviewed evidence and incident details", async () => {
     const url = `/api/admin/safe-passage/${id}/verify`;
     const base = { winner: 1, reason: "A report alone is not sufficient verification", sources: ["https://example.com/a"], reviewed: true };
@@ -83,4 +119,20 @@ describe("Safe Passage operator/API workflow", () => {
     expect(dto.evidenceHash).toBe(res.json().evidenceHash);
     expect(dto.evidence.reason).toContain("Confirmed successful");
   });
+  it("recovers verified evidence and wallet receipts after a claim moves the market UTxO", async () => {
+    const w = ctx.demoWallets[0]!;
+    const payload = { address: w.account.address, utxos: (await ctx.provider.getUtxos(w.account.address)).map(encodeUtxo) };
+    const portfolio = await app.inject({ method: "POST", url: "/api/safe-passage/portfolio", payload });
+    expect(portfolio.json().positions[0].no).toBe("1000000");
+    const claim = await app.inject({ method: "POST", url: "/api/safe-passage/claim", payload: { ...payload, marketId: id } });
+    expect(claim.statusCode, claim.body).toBe(200);
+    const lucid = await ctx.newLucid(); lucid.selectWallet.fromSeed(w.account.seedPhrase);
+    await (await lucid.fromTx(claim.json().tx).sign.withWallet().complete()).submit(); ctx.emulator!.awaitBlock(1);
+    const restored = new SafePassageService({ ...cfg, DATA_DIR: mkdtempSync(join(tmpdir(), "safe-settled-")) }, ctx, adsb);
+    const m = await restored.require(id); const dto = restored.dto(m);
+    expect(dto).toMatchObject({ phase: "resolved", winner: 0 });
+    expect(dto.evidence?.reason).toContain("Confirmed successful");
+    expect(m.datum.claimedNo).toBe(1_000_000n);
+  });
+
 });

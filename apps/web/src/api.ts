@@ -54,6 +54,7 @@ export const api = {
   safeClaim: (wallet: WalletPayload, marketId: string) => post<{ tx: string }>("/api/safe-passage/claim", { ...wallet, marketId }),
   safeFund: (token: string, hex: string) => request<{ txHash: string }>("/api/admin/safe-passage/fund", { method: "POST", headers: bearer(token), body: JSON.stringify({ hex, confirmReserve: true }) }),
   safeFreeze: (token: string, id: string, reason: string, sources: string[]) => request<{ txHash: string }>(`/api/admin/safe-passage/${id}/freeze`, { method: "POST", headers: bearer(token), body: JSON.stringify({ reason, sources }) }),
+  safeResume: (token: string, id: string, reason: string) => request<{ ok: boolean }>(`/api/admin/safe-passage/${id}/resume-after-restart`, { method: "POST", headers: bearer(token), body: JSON.stringify({ reviewed: true, reason }) }),
   safeVerify: (token: string, id: string, body: unknown) => request<{ txHash: string }>(`/api/admin/safe-passage/${id}/verify`, { method: "POST", headers: bearer(token), body: JSON.stringify(body) }),
   adminCheck: (token: string) => request<{ ok: boolean }>("/api/admin/check", { headers: bearer(token) }),
   voidMarket: (token: string, marketId: string, reason: string) =>

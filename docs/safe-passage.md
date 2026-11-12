@@ -54,18 +54,55 @@ even if a caller bypasses the UI and HTTP API.
    `SAFE_PASSAGE_MAX_OPEN=5`, `SAFE_PASSAGE_MAX_STAKE_ADA=1000`.
 4. Keep the existing `OPERATOR_SEED` and `ADMIN_TOKEN`. The operator wallet
    needs the desired reserve plus fees on the configured network. No new key.
-5. **Use a persistent, backed-up `DATA_DIR`** for `safe-passage.json`. The journal
-   retains evidence, suspected-event blocks and pending transaction records.
-   Render's ephemeral local filesystem is not a substitute for persistent
-   storage. This PR does not change your Render plan or provision a disk.
+5. Leave **`DATA_DIR=data`**. No paid Render instance or persistent disk is
+   required. `safe-passage.json` is a local cache, not the permanent source of
+   confirmed states or verification evidence. No additional database/key is needed.
 6. Open `/#operator`, authenticate with the existing admin token, select a
    regional aircraft, then explicitly confirm funding its market. Merely
    opening a flight never transfers or locks operator funds.
 
-On-chain reserves, states and entitlements survive a server restart. The local
-journal preserves the full human-reviewed evidence and immediately blocks new
-API bets even if a freeze transaction has not confirmed or submission failed.
-Back it up before changing operators/hosts. Never delete it to clear an incident.
+## Render Free recovery
+
+Reserves, stakes, receipts and confirmed market states are already on-chain.
+Freeze and verification transactions now also create a full evidence archive
+output at the existing operator-controlled metadata-store address. That output
+contains the exact JSON manifest. Its SHA-256 must match the evidence hash in
+the authenticated market datum, and the market ID/action/winner are validated
+before displaying recovered evidence. Arbitrary deposits or changed payloads
+are not trusted. Receipt claims can move the market UTxO without losing the
+archive; recovery does not depend on transaction-history APIs.
+
+On a cold start, the server reads current markets from the existing Cardano
+provider and recovers their required evidence outputs. `data` may disappear
+between Render Free deployments; the confirmed funds, states and new evidence
+remain recoverable. Provider outages do not invent a result. Missing evidence
+is shown as unavailable and retried. The signed market state still governs claims.
+
+**Open markets require operator review after complete cache loss.** A restart
+cannot prove whether an incident was suspected just before the process stopped
+and its freeze transaction failed or had not confirmed. Such older open markets
+are therefore held at the API/UI level. In the operator section either retry the
+freeze, or explicitly acknowledge the restart review and choose **Nach Neustart
+freigeben** when no unverified suspicion exists. A confirmed on-chain Frozen
+market cannot be reopened through that action. A suspicion retained in a surviving
+cache also cannot be cleared by the restart-review button. Quotes already built
+before a freeze contend on-chain; the contract enforces its confirmed state.
+
+This review requirement is the deliberate fail-closed behavior, not an automatic
+loss or automatic settlement. A brand-new market explicitly funded by the current
+process is not quarantined. Confirmed frozen/resolved markets recover automatically.
+
+Evidence outputs are public blockchain data. Recording them incurs normal network
+fees and an additional ADA minimum-output deposit based on record size. The operator
+wallet pays these, separately from bettor collateral. No Render upgrade or external
+storage subscription is required. Evidence is limited to 8192 UTF-8 bytes per record.
+Do not reclaim these archive outputs while their evidence is still needed. Existing
+automatic reference-NFT reclamation does not select them.
+
+Evidence from an older deployment that never wrote archive outputs can only be
+read while its old local copy exists. Already-lost historical local-only evidence
+cannot be reconstructed from a hash alone. New freeze/verification records use the
+on-chain archive atomically with the state transition.
 
 ## Suspicion and verification
 
@@ -84,8 +121,9 @@ In the aircraft card's operator section:
    Different hostnames alone do **not** prove independent reporting; that is
    the operator's responsibility. Link syntax checks are not fact verification.
 4. Submit **Verifiziert abrechnen**. The exact evidence manifest is SHA-256
-   hashed; the signed settlement commits the hash on-chain. The full manifest
-   is archived in `DATA_DIR` and its sources/reason appear in the aircraft card.
+   hashed; the signed settlement commits the hash and writes the full manifest
+   to its archive output in the same transaction. Sources/reason appear in the
+   aircraft card and can be reloaded after `DATA_DIR` is erased.
 5. Players redeem their receipts through **Portfolio**. The contract permits
    no early payout, duplicate redemption or withdrawal above fixed entitlement.
 
@@ -110,6 +148,8 @@ Existing admin Bearer token required:
 
 - `POST /api/admin/safe-passage/fund`: `{hex, confirmReserve:true}`
 - `POST /api/admin/safe-passage/:id/freeze`: `{reason, sources:[]}`
+- `POST /api/admin/safe-passage/:id/resume-after-restart`: `{reviewed:true, reason}`;
+  only for an open market held after cache loss, never a confirmed Frozen market.
 - `POST /api/admin/safe-passage/:id/verify`:
   `{winner:0|1|null, reason, sources:[], reviewed:true}`; NO also needs
   `independentSourcesConfirmed:true`, `incidentAt` (Unix ms), `incidentZone`.
@@ -126,4 +166,7 @@ builder, frozen-state bets bypassing the API, unauthorized freeze/verification,
 overclaims, duplicate claims, YES/NO/refund redemption, claim-window protection,
 admin authentication, evidence validation and restart recovery after a failed
 freeze submission. Existing market lifecycle tests remain in the full suite.
-No production transaction or Render deployment was performed during development.
+Recovery tests use a completely new empty DATA_DIR, preserve a confirmed freeze,
+reload verified evidence after a claim moves the market UTxO, reject mismatched
+archive payloads and validate the explicit restart-review gate. No production
+transaction or Render deployment was performed during development.

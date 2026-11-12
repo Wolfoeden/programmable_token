@@ -72,7 +72,8 @@ export function SafePassageCard(p: { hex: string; aircraft?: AircraftDto; wallet
           <button className="btn primary" disabled={busy || now >= quote.expiresAt} onClick={confirm}>{now >= quote.expiresAt ? "Angebot abgelaufen – neu prüfen" : "Wette im Wallet bestätigen"}</button>
           <button className="btn flat small" disabled={busy} onClick={() => setQuote(null)}>Zurück</button>
         </div> : <button className="btn primary" disabled={busy || (!!p.wallet && !available)} onClick={review}>{busy ? "Wird geprüft …" : p.wallet ? "Wette prüfen" : "Wallet verbinden"}</button>}
-      </> : <div className="closed-box" role="status">{m.phase === "frozen" ? "EINGEFROREN · Verdachtsfall in Prüfung. Wetten und Auszahlungen sind gesperrt." : m.phase === "updating" ? "Blockchain-Bestätigung ausstehend. Wetten sind gesperrt." : m.winner === null ? "Annulliert – Einsätze können im Portfolio abgeholt werden." : `Verifiziert: ${m.winner === 0 ? "JA" : "NEIN"}. Auszahlung im Portfolio abholen.`}</div>}
+      </> : <div className="closed-box" role="status">{m.recoveryHold ? "NEUSTART-PRÜFUNG · Offener Markt bis zur Betreiberprüfung gesperrt." : m.phase === "frozen" ? "EINGEFROREN · Verdachtsfall in Prüfung. Wetten und Auszahlungen sind gesperrt." : m.phase === "updating" ? "Blockchain-Bestätigung ausstehend. Wetten sind gesperrt." : m.winner === null ? "Annulliert – Einsätze können im Portfolio abgeholt werden." : `Verifiziert: ${m.winner === 0 ? "JA" : "NEIN"}. Auszahlung im Portfolio abholen.`}</div>}
+      {m.evidenceHash && !m.evidence && <p className="pool-note">Belege aktuell nicht abrufbar. Der bestätigte Marktstatus bleibt auf der Blockchain erhalten.</p>}
       {m.evidence && <details><summary>Verifikation und Belege</summary><p>{m.evidence.reason}</p>{m.evidence.sources.map(s => <p key={s}><a href={s} target="_blank" rel="noreferrer">{new URL(s).hostname}</a></p>)}<small>Beleg-Hash: {m.evidenceHash}</small></details>}
       {p.operator && m.phase !== "resolved" && <SafeOperator market={m} token={p.operator} reload={poll.reload} />}
     </>}
@@ -85,6 +86,7 @@ function SafeOperator(p: { market: SafeMarketDto; token: string; reload: () => v
   const [winner, setWinner] = useState("0"); const [incidentAt, setAt] = useState(""); const [zone, setZone] = useState(p.market.zone);
   const [reviewed, setReviewed] = useState(false); const [independent, setIndependent] = useState(false);
   const [busy, setBusy] = useState(false); const [message, setMessage] = useState("");
+  useEffect(() => { setReviewed(false); setIndependent(false); }, [p.market.id, p.market.chainState, p.market.evidenceHash, p.market.recoveryHold]);
   async function act() {
     setBusy(true); setMessage("");
     try {
@@ -97,6 +99,10 @@ function SafeOperator(p: { market: SafeMarketDto; token: string; reload: () => v
     finally { setBusy(false); }
   }
   return <details className="safe-admin"><summary>Betreiber: Verdacht und Verifikation</summary>
+    {p.market.recoveryHold && <div className="closed-box"><p>Nach Verlust des lokalen Caches muss ein Betreiber den offenen Markt prüfen. Freigabe nur, wenn kein ungeklärter Verdacht besteht.</p><label><input type="checkbox" checked={reviewed} onChange={e => setReviewed(e.target.checked)} /> Markt und mögliche Verdachtsmeldungen nach dem Neustart geprüft.</label><button type="button" className="btn small" disabled={busy || !reviewed || reason.trim().length < 10} onClick={async () => {
+      setBusy(true); setMessage(""); try { await api.safeResume(p.token, p.market.id, reason); setMessage("Neustart-Prüfung bestätigt."); p.reload(); } catch (e) { setMessage(errorText(e)); } finally { setBusy(false); }
+    }}>Nach Neustart freigeben</button></div>}
+    <p className="pool-note">Begründung und Quellen werden bei bestätigtem Freeze oder Abschluss öffentlich auf der Blockchain gespeichert.</p>
     <label>Begründung<textarea value={reason} onChange={e => setReason(e.target.value)} /></label>
     <label>HTTPS-Quellen, eine pro Zeile<textarea value={sources} onChange={e => setSources(e.target.value)} /></label>
     {p.market.chainState === "frozen" && <>

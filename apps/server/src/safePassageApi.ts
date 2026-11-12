@@ -80,6 +80,11 @@ export function registerSafePassageApi(app: FastifyInstance, service: SafePassag
     const body = z.object({ reason: z.string().trim().min(10).max(2000), sources: Sources.default([]) }).parse(req.body);
     return enabled().freeze(id, body.reason, body.sources);
   });
+  app.post("/api/admin/safe-passage/:id/resume-after-restart", async req => {
+    auth(req); const { id } = z.object({ id: Id }).parse(req.params);
+    const { reviewed, reason } = z.object({ reviewed: z.literal(true), reason: z.string().trim().min(10).max(2000) }).parse(req.body);
+    return enabled().resumeAfterRestart(id, reason);
+  });
   app.post("/api/admin/safe-passage/:id/verify", async req => {
     auth(req); const { id } = z.object({ id: Id }).parse(req.params);
     const body = z.object({ winner: z.union([z.literal(0), z.literal(1), z.null()]),

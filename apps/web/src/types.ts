@@ -198,6 +198,7 @@ export type { FlightRef, Question };
 export interface SafeMarketDto {
   id: string; hex: string; zone: string; openedAt: number;
   phase: "open" | "frozen" | "resolved" | "updating";
+  recoveryHold?: boolean;
   chainState: "open" | "frozen" | "resolved";
   odds: [string, string]; reserve: string; stakes: [string, string]; limits: [string, string]; minStake: string;
   winner: 0 | 1 | null; evidenceHash: string | null; claimDeadline: number | null;

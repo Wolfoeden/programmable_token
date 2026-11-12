@@ -5,6 +5,8 @@ import blueprint from "../../../onchain/plutus.json" with { type: "json" };
 import { MintRedeemer, optionInt } from "./codec.js";
 import { marketIdFromSeed, marketNftName, positionName, parsePositionName, utf8ToHex, hexToUtf8 } from "./tokens.js";
 
+export interface SafeEvidenceOutput { address: string; datum: string }
+
 export interface SafeContracts { script: Script; policy: string; address: string; operatorKeyHash: string }
 export interface SafeMarket { datum: SafeDatum; utxo: UTxO }
 export function loadSafeContracts(network: Network, operatorKeyHash: string): SafeContracts {
@@ -71,20 +73,24 @@ export async function buildSafeBet(lucid: LucidEvolution, c: SafeContracts, m: S
     .pay.ToContract(...continuation(c, m, d, value(m) + stake)).pay.ToAddress(owner, { [receipt]: stake })
     .validFrom(now).validTo(now + 60_000).complete();
 }
-export async function buildSafeFreeze(lucid: LucidEvolution, c: SafeContracts, m: SafeMarket, evidence: string, now: number, walletUtxos?: UTxO[]) {
+export async function buildSafeFreeze(lucid: LucidEvolution, c: SafeContracts, m: SafeMarket, evidence: string, now: number, walletUtxos?: UTxO[], archive?: SafeEvidenceOutput) {
   if (m.datum.state.kind !== "open" || !/^[a-f0-9]{64}$/.test(evidence)) throw new Error("Invalid freeze");
   const d: SafeDatum = { ...m.datum, state: { kind: "frozen", evidence } };
-  return lucid.newTx().collectFrom([m.utxo], action(1, [evidence])).attach.SpendingValidator(c.script)
+  let tx = lucid.newTx().collectFrom([m.utxo], action(1, [evidence])).attach.SpendingValidator(c.script)
     .pay.ToContract(...continuation(c, m, d, value(m))).addSignerKey(c.operatorKeyHash)
-    .validFrom(now).validTo(now + 60_000).complete(walletUtxos ? { presetWalletInputs: walletUtxos } : {});
+    .validFrom(now).validTo(now + 60_000);
+  if (archive) tx = tx.pay.ToContract(archive.address, { kind: "inline", value: archive.datum }, { lovelace: 2_000_000n });
+  return tx.complete(walletUtxos ? { presetWalletInputs: walletUtxos } : {});
 }
-export async function buildSafeVerify(lucid: LucidEvolution, c: SafeContracts, m: SafeMarket, winner: SafeOutcome | null, evidence: string, now: number, walletUtxos?: UTxO[]) {
+export async function buildSafeVerify(lucid: LucidEvolution, c: SafeContracts, m: SafeMarket, winner: SafeOutcome | null, evidence: string, now: number, walletUtxos?: UTxO[], archive?: SafeEvidenceOutput) {
 
   if (m.datum.state.kind !== "frozen" || !/^[a-f0-9]{64}$/.test(evidence)) throw new Error("Freeze and verify first");
   const d: SafeDatum = { ...m.datum, state: { kind: "resolved", winner, evidence, settledAt: now } };
-  return lucid.newTx().collectFrom([m.utxo], action(2, [optionInt(winner), evidence, BigInt(now)])).attach.SpendingValidator(c.script)
+  let tx = lucid.newTx().collectFrom([m.utxo], action(2, [optionInt(winner), evidence, BigInt(now)])).attach.SpendingValidator(c.script)
     .pay.ToContract(...continuation(c, m, d, value(m))).addSignerKey(c.operatorKeyHash)
-    .validFrom(now).validTo(now + 240_000).complete(walletUtxos ? { presetWalletInputs: walletUtxos } : {});
+    .validFrom(now).validTo(now + 240_000);
+  if (archive) tx = tx.pay.ToContract(archive.address, { kind: "inline", value: archive.datum }, { lovelace: 2_000_000n });
+  return tx.complete(walletUtxos ? { presetWalletInputs: walletUtxos } : {});
 }
 export function safePositions(c: SafeContracts, utxos: UTxO[], id: string) {
   const assets: Assets = {}; let yes = 0n, no = 0n;

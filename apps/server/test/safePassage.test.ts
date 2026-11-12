@@ -61,6 +61,13 @@ describe("Safe Passage operator/API workflow", () => {
     const lucid = await ctx.newLucid(); lucid.selectWallet.fromSeed(w.account.seedPhrase);
     await (await lucid.fromTx(quote.json().tx).sign.withWallet().complete()).submit();
     ctx.emulator!.awaitBlock(1); await service.refresh(true);
+    // Submission locks an order, not a position. Only the batcher books it.
+    expect((await service.require(id)).datum.no).toBe(0n);
+    expect((await service.openOrders()).length).toBe(1);
+    expect(quote.json()).toMatchObject({ batcherFee: "400000", deposit: "2000000", hex: "abcdef" });
+    await service.tick(); ctx.emulator!.awaitBlock(1); await service.refresh(true);
+    expect((await service.require(id)).datum.no).toBe(1_000_000n);
+    expect(await service.openOrders()).toHaveLength(0);
     expect((await app.inject({ method: "POST", url: "/api/safe-passage/quote", payload: { ...payload, stake: "2000000" } })).statusCode).toBe(409);
   });
   it("keeps a suspicion fail-closed across a submission failure and a restart", async () => {

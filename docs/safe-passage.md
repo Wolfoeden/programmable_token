@@ -34,9 +34,10 @@ Creation locks operator reserve R plus a separate 3 ADA min-output buffer.
 There are no seed position tokens. Before each bet the **on-chain validator**
 requires both `YES payout(total YES stakes)` and `NO payout(total NO stakes)`
 to fit within `R + YES stakes + NO stakes`. The 3 ADA buffer is not bankroll.
-Refunds are covered as well. Accepted bets cannot consume the same market UTxO
-twice: competing quotes contend on-chain and a stale transaction must be rebuilt.
-No unfunded pending order is represented as an accepted fixed-odds bet.
+Refunds are covered as well. Bets use the existing order validator parameterized
+with the Safe Passage receipt policy. The batcher serializes fills against the
+market UTxO and checks aggregate coverage; competing orders cannot overbook it.
+A pending order is not an accepted fixed-odds position. Quotes do not reserve capacity.
 
 Defaults: 1,000 ADA reserve per funded market, five unresolved markets, minimum
 1 ADA stake, maximum 1,000 ADA per bet subject to the stricter live collateral
@@ -57,9 +58,41 @@ even if a caller bypasses the UI and HTTP API.
 5. Leave **`DATA_DIR=data`**. No paid Render instance or persistent disk is
    required. `safe-passage.json` is a local cache, not the permanent source of
    confirmed states or verification evidence. No additional database/key is needed.
-6. Open `/#operator`, authenticate with the existing admin token, select a
-   regional aircraft, then explicitly confirm funding its market. Merely
-   opening a flight never transfers or locks operator funds.
+6. Select a regional aircraft and review a bet. As with the existing landing
+   markets, the first review creates and funds the market from the operator
+   wallet; players do not need operator mode. Opening a flight only reads data.
+   The existing reserve/open-market caps limit operator exposure. Additional
+   first-market requests are rate limited to three per IP per hour.
+
+## Money and order lifecycle
+
+1. Viewing an aircraft is read-only. Clicking **Review bet** validates the wallet,
+   stake and fresh in-zone position, then creates or reuses the covered market.
+   The operator locks its reserve plus 3 ADA and pays creation fees at this step,
+   exactly as existing landing markets create during review. The bettor has not paid.
+2. The existing card styles show **Yes / No**, stake presets, **Review bet** and
+   the same cost-table layout. Everything is English. Fixed multipliers replace
+   pool percentages because these are contractual gross payouts, not probabilities.
+3. **Confirm bet** signs/submits an order through the existing wallet/submit flow.
+   It locks stake + 0.4 ADA batcher fee + 2 ADA return deposit; the wallet also
+   pays the quoted network fee. No operator login or manual pre-funding step.
+4. The Safe Passage batcher runs every 10 seconds. It uses the existing order
+   validator's owner-tagged fill branch, issuing receipts and returning the 2 ADA
+   deposit. It books only covered orders while the market is open and a fresh
+   airborne position remains inside a red country. It does not invent a result
+   when a flight leaves or reception disappears.
+5. A queue deadline of five minutes limits how long an unaccepted order waits;
+   it is not a deadline for the aircraft or the wager outcome. Orders lacking
+   coverage, or suspended by a freeze/stale/outside position, stay pending.
+   Players can cancel pending orders in **My bets** (network fee); expired orders
+   are refunded by the batcher after a one-minute safety margin, minus 0.4 ADA.
+   Cancellation refunds the remaining order value; neither path mints positions.
+6. Accepted receipts stay locked economically until verified settlement. Claims
+   use the existing direct-sign/submit pattern and burn receipts against the
+   fixed-payout validator. They pay a network fee, with no order/batcher fee.
+   The parimutuel order validator's claim branch is deliberately not used: its
+   payout calculation is incompatible with fixed odds. Existing positions and
+   all validator bytecode/policy IDs remain unchanged.
 
 ## Render Free recovery
 
@@ -82,11 +115,9 @@ is shown as unavailable and retried. The signed market state still governs claim
 cannot prove whether an incident was suspected just before the process stopped
 and its freeze transaction failed or had not confirmed. Such older open markets
 are therefore held at the API/UI level. In the operator section either retry the
-freeze, or explicitly acknowledge the restart review and choose **Nach Neustart
-freigeben** when no unverified suspicion exists. A confirmed on-chain Frozen
+freeze, or explicitly acknowledge the restart review and choose **Resume after restart review** when no unverified suspicion exists. A confirmed on-chain Frozen
 market cannot be reopened through that action. A suspicion retained in a surviving
-cache also cannot be cleared by the restart-review button. Quotes already built
-before a freeze contend on-chain; the contract enforces its confirmed state.
+cache also cannot be cleared by the restart-review button. Queued orders cannot be booked while frozen. Expiry refunds and owner cancellations return unaccepted stakes without settling a flight outcome.
 
 This review requirement is the deliberate fail-closed behavior, not an automatic
 loss or automatic settlement. A brand-new market explicitly funded by the current
@@ -108,7 +139,7 @@ on-chain archive atomically with the state transition.
 
 In the aircraft card's operator section:
 
-1. Enter a reason and optional source links; choose **Bei Verdacht einfrieren**.
+1. Enter a reason and optional source links; choose **Freeze on suspicion**.
    The API closes immediately and persists that block before submission.
    After chain confirmation, the validator also rejects direct bets and claims.
    A previously built competing bet can confirm before the freeze; full coverage
@@ -120,11 +151,11 @@ In the aircraft card's operator section:
    an independent-source review confirmation, event timestamp and country.
    Different hostnames alone do **not** prove independent reporting; that is
    the operator's responsibility. Link syntax checks are not fact verification.
-4. Submit **Verifiziert abrechnen**. The exact evidence manifest is SHA-256
+4. Submit **Settle verified outcome**. The exact evidence manifest is SHA-256
    hashed; the signed settlement commits the hash and writes the full manifest
    to its archive output in the same transaction. Sources/reason appear in the
    aircraft card and can be reloaded after `DATA_DIR` is erased.
-5. Players redeem their receipts through **Portfolio**. The contract permits
+5. Players redeem their receipts through **My bets**. The contract permits
    no early payout, duplicate redemption or withdrawal above fixed entitlement.
 
 The contract authenticates the operator and commits the decision/evidence hash;
@@ -141,7 +172,7 @@ the freeze before verification becomes available.
 
 Public: `GET /api/safe-passage/flight/:hex`, `GET /api/safe-passage/markets`,
 `POST /api/safe-passage/quote`, `POST /api/safe-passage/portfolio`,
-`POST /api/safe-passage/claim`. Bet/claim transactions use the existing wallet
+`POST /api/safe-passage/claim`, `POST /api/safe-passage/cancel`. Quote accepts `{address, utxos, marketId?, hex?, outcome, stake}`. Portfolio includes pending orders. Bet/claim transactions use the existing wallet
 signature and `/api/tx/submit` flow.
 
 Existing admin Bearer token required:

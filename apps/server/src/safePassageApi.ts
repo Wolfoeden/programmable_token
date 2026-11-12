@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { z } from "zod";
-import { buildSafeBet, buildSafeClaim, buildSafeClose, safePositions } from "@flightradar/chain";
+import { buildSafeBetOrder, buildCancelOrder, DEFAULT_BATCHER_FEE, ORDER_DEPOSIT, buildSafeClaim, buildSafeClose, safePositions } from "@flightradar/chain";
 import { safeCapacity, safeClaim, safePayout } from "@flightradar/core/safePassage";
 import type { ChainContext } from "./chain.js";
 import type { SafePassageService } from "./safePassage.js";
@@ -16,6 +16,7 @@ export function registerSafePassageApi(app: FastifyInstance, service: SafePassag
   walletLucid: (body: { address: string; utxos: string[] }, opts?: { verify?: boolean }) => Promise<LucidEvolution>,
   auth: (req: FastifyRequest) => void, ctx: ChainContext) {
   const rate = new RateLimiter(30, 3600_000);
+  const creationRate = new RateLimiter(3, 3600_000);
   const enabled = () => {
     if (!service?.cfg.SAFE_PASSAGE_ENABLED) throw new HttpError(409, "safe_disabled", "Safe Passage is not enabled");
     return service;
@@ -27,7 +28,13 @@ export function registerSafePassageApi(app: FastifyInstance, service: SafePassag
     if (!service?.cfg.SAFE_PASSAGE_ENABLED) return { enabled: false, market: null };
     await service.refresh();
     const m = service.forFlight(hex);
-    return { enabled: true, market: m ? service.dto(m) : null, reservePerMarket: String(BigInt(service.cfg.SAFE_PASSAGE_RESERVE_ADA) * 1_000_000n) };
+    const reserve = BigInt(service.cfg.SAFE_PASSAGE_RESERVE_ADA) * 1_000_000n;
+    const maxStake = BigInt(service.cfg.SAFE_PASSAGE_MAX_STAKE_ADA) * 1_000_000n;
+    const previewLimits = ([0, 1] as const).map(outcome => {
+      const capacity = safeCapacity({ reserve, yes: 0n, no: 0n }, outcome);
+      return String(capacity < maxStake ? capacity : maxStake);
+    });
+    return { enabled: true, market: m ? service.dto(m) : null, reservePerMarket: String(reserve), previewLimits };
   });
 
   app.get("/api/safe-passage/markets", async () => {
@@ -36,22 +43,35 @@ export function registerSafePassageApi(app: FastifyInstance, service: SafePassag
 
   app.post("/api/safe-passage/quote", async req => {
     limit(req); const s = enabled();
-    const body = Wallet.extend({ marketId: Id, outcome: z.union([z.literal(0), z.literal(1)]), stake: z.string().regex(/^[0-9]{1,18}$/) }).parse(req.body);
+    const body = Wallet.extend({ marketId: Id.optional(), hex: Hex.optional(), outcome: z.union([z.literal(0), z.literal(1)]), stake: z.string().regex(/^[0-9]{1,18}$/) }).parse(req.body);
     const stake = BigInt(body.stake);
     if (stake < 1_000_000n || stake > BigInt(s.cfg.SAFE_PASSAGE_MAX_STAKE_ADA) * 1_000_000n) throw new HttpError(422, "bad_stake", "Stake is outside the per-bet limits");
-    const m = await s.require(body.marketId, true);
-    await s.eligible(m.datum.flight);
-    if (stake > safeCapacity(m.datum, body.outcome)) throw new HttpError(409, "cap_reached", "The requested payout is not fully covered");
+    // Validate the bettor and stake before spending operator funds, as in /api/tx/bet.
     const lucid = await walletLucid(body);
-    const tx = await buildSafeBet(lucid, s.contracts, m, body.outcome, stake, ctx.now());
+    let id = body.marketId;
+    if (!id && body.hex) { await s.refresh(); id = s.forFlight(body.hex)?.datum.marketId; }
+    if (!id) {
+      if (!body.hex) throw new HttpError(400, "bad_request", "marketId or hex is required");
+      await s.eligible(body.hex);
+      const reserve = BigInt(s.cfg.SAFE_PASSAGE_RESERVE_ADA) * 1_000_000n;
+      if (stake > safeCapacity({ reserve, yes: 0n, no: 0n }, body.outcome)) throw new HttpError(409, "cap_reached", "The requested payout is not fully covered");
+      if (!creationRate.allow(req.ip)) throw new HttpError(429, "rate_limited", "Too many market requests");
+      id = (await s.fund(body.hex, true)).marketId;
+    }
+    const d = await s.quoteDatum(id);
+    await s.eligible(d.flight);
+    if (body.hex && body.hex !== d.flight) throw new HttpError(409, "flight_mismatch");
+    if (stake > safeCapacity(d, body.outcome)) throw new HttpError(409, "cap_reached", "The requested payout is not fully covered");
+    const tx = await buildSafeBetOrder(lucid, s.orders, id, body.outcome, stake, ctx.now());
     return { tx: tx.toCBOR(), payout: safePayout(body.outcome, stake).toString(), stake: body.stake,
-      fee: tx.toTransaction().body().fee().toString(), outcome: body.outcome, marketId: body.marketId,
-      expiresAt: ctx.now() + 60_000 };
+      fee: tx.toTransaction().body().fee().toString(), batcherFee: String(DEFAULT_BATCHER_FEE), deposit: String(ORDER_DEPOSIT),
+      outcome: body.outcome, marketId: id, hex: d.flight, expiresAt: ctx.now() + 60_000 };
+
   });
 
   app.post("/api/safe-passage/portfolio", async req => {
     const body = Wallet.parse(req.body);
-    if (!service?.cfg.SAFE_PASSAGE_ENABLED) return { positions: [] };
+    if (!service?.cfg.SAFE_PASSAGE_ENABLED) return { positions: [], orders: [] };
     await service.refresh();
     const lucid = await walletLucid(body, { verify: false });
     const inputs = await lucid.wallet().getUtxos();
@@ -59,7 +79,23 @@ export function registerSafePassageApi(app: FastifyInstance, service: SafePassag
       const pos = safePositions(service.contracts, inputs, m.datum.marketId);
       return { market: service.dto(m), yes: pos.yes.toString(), no: pos.no.toString(), claimable: safeClaim(m.datum, pos.yes, pos.no).toString() };
     }).filter(p => BigInt(p.yes) + BigInt(p.no) > 0n);
-    return { positions };
+    const address = await lucid.wallet().address();
+    const orders = (await service.openOrders()).filter(o => o.datum.owner === address).map(o => ({
+      txHash: o.utxo.txHash, outputIndex: o.utxo.outputIndex, marketId: o.datum.marketId,
+      outcome: o.datum.order.kind === "bet" ? o.datum.order.outcome : null,
+      stake: o.datum.order.kind === "bet" ? String(o.datum.order.stake) : "0", deadline: Number(o.datum.deadline),
+    }));
+    return { positions, orders };
+  });
+
+  app.post("/api/safe-passage/cancel", async req => {
+    limit(req); const s = enabled();
+    const body = Wallet.extend({ txHash: z.string().regex(/^[a-f0-9]{64}$/), outputIndex: z.number().int().nonnegative() }).parse(req.body);
+    const lucid = await walletLucid(body);
+    const address = await lucid.wallet().address();
+    const o = (await s.openOrders()).find(o => o.utxo.txHash === body.txHash && o.utxo.outputIndex === body.outputIndex && o.datum.owner === address);
+    if (!o) throw new HttpError(404, "order_not_found");
+    return { tx: (await buildCancelOrder(lucid, s.orders, o)).toCBOR() };
   });
 
   app.post("/api/safe-passage/claim", async req => {

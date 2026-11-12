@@ -55,7 +55,7 @@ export class MarketError extends Error {
 /** Lovelace held by a UTxO. */
 export const lovelaceOf = (u: UTxO): bigint => u.assets.lovelace ?? 0n;
 
-function keyHashOf(address: string): string {
+export function keyHashOf(address: string): string {
   const pc = getAddressDetails(address).paymentCredential;
   if (!pc || pc.type !== "Key") throw new Error("expected a key address");
   return pc.hash;

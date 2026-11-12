@@ -12,6 +12,7 @@
     "./aircraft": "./src/aircraft.ts",
     "./eta": "./src/eta.ts",
     "./format": "./src/format.ts",
+    "./safePassage": "./src/safePassage.ts",
     "./deathzones": "./src/deathzones.ts",
     "./geo": "./src/geo.ts",
     "./parimutuel": "./src/parimutuel.ts",

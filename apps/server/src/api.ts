@@ -36,6 +36,8 @@ import {
   unit,
 } from "@flightradar/chain";
 import type { DeathZoneTraffic } from "./deathZoneTraffic.js";
+import type { SafePassageService } from "./safePassage.js";
+import { registerSafePassageApi } from "./safePassageApi.js";
 import type { AdsbSource } from "./adsb.js";
 import { decodeUtxo, encodeUtxo, type ChainContext } from "./chain.js";
 import type { ChainIndex } from "./chainIndex.js";
@@ -62,6 +64,7 @@ export interface Services {
   maker: MarketMaker;
   traffic: CamTraffic;
   deathZoneTraffic?: DeathZoneTraffic;
+  safePassage?: SafePassageService;
   tracker: Tracker;
   /** Shadow log of model, outcomes and bets (optional in tests). */
   shadow?: ShadowLog;
@@ -616,6 +619,8 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
   const auth = (req: FastifyRequest) => {
     if (!adminToken || req.headers.authorization !== `Bearer ${adminToken}`) throw new HttpError(401, "unauthorized", "Admin token missing or wrong");
   };
+
+  registerSafePassageApi(app, s.safePassage, walletLucid, auth, s.ctx);
 
   /** Check an admin token (the app's operator mode). */
   app.get("/api/admin/check", async (req) => {

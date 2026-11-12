@@ -1,3 +1,4 @@
+import { SafePassagePositions } from "./SafePassageCard";
 import { api } from "../api";
 import { ada } from "../format";
 import { usePoll } from "../hooks";
@@ -35,6 +36,7 @@ export function PortfolioPanel(p: PortfolioPanelProps) {
         </button>
       </div>
       <div className="panel-body">
+        <SafePassagePositions wallet={p.wallet} />
         {error !== null && <div className="muted">{errorText(error)}</div>}
         {data && data.positions.length === 0 && data.orders.length === 0 && <div className="muted">{t.noPositions}</div>}
         {(() => {

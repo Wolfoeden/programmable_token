@@ -176,3 +176,17 @@ Wetten mit Geldwert sind Glücksspiel. In Deutschland ist dafür eine Erlaubnis 
 - Flughäfen: [OurAirports](https://ourairports.com/data/), gemeinfrei
 - Karte: [OpenFreeMap](https://openfreemap.org), © OpenMapTiles, © OpenStreetMap-Mitwirkende
 - Flugpläne, optional: [AeroDataBox](https://aerodatabox.com)
+
+
+## Safe Passage (feste Quoten)
+
+Die Flugzeugansicht unterstützt separat gedeckte Safe-Passage-Märkte mit
+JA **1,0001x** und NEIN **1000x**. NEIN gilt nur für verifizierten Absturz oder
+Abschuss innerhalb einer roten Zone; Landung, Umkehr und Signalverlust allein
+lösen kein NEIN aus. Bei Verdacht wird eingefroren, vor Verifikation gibt es
+keine Auszahlung. Bestehende Landungswetten und deren Verträge bleiben erhalten.
+
+Aktivierung, ausdrückliche Betreiberfinanzierung, persistentes DATA_DIR,
+Belegprüfung, feste Einsatzlimits und Abholung sind in
+[docs/safe-passage.md](docs/safe-passage.md) beschrieben. Standardmäßig bleibt
+SAFE_PASSAGE_ENABLED aus; ein Seitenaufruf finanziert keinen Markt.

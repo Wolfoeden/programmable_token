@@ -1,5 +1,5 @@
 /** Thin client for the server API. */
-import type { AircraftDetail, AircraftResponse, TrackPoint, BetCosts, DeparturesResponse, Health, MarketDto, Portfolio, StreamInfo } from "./types";
+import type { SafeFlightResponse, SafePosition, SafeQuote, AircraftDetail, AircraftResponse, TrackPoint, BetCosts, DeparturesResponse, Health, MarketDto, Portfolio, StreamInfo } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -48,6 +48,13 @@ export interface WalletPayload {
 const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
 
 export const api = {
+  safeFlight: (hex: string) => request<SafeFlightResponse>(`/api/safe-passage/flight/${hex}`),
+  safeQuote: (wallet: WalletPayload, marketId: string, outcome: 0 | 1, stake: string) => post<SafeQuote>("/api/safe-passage/quote", { ...wallet, marketId, outcome, stake }),
+  safePortfolio: (wallet: WalletPayload) => post<{ positions: SafePosition[] }>("/api/safe-passage/portfolio", wallet),
+  safeClaim: (wallet: WalletPayload, marketId: string) => post<{ tx: string }>("/api/safe-passage/claim", { ...wallet, marketId }),
+  safeFund: (token: string, hex: string) => request<{ txHash: string }>("/api/admin/safe-passage/fund", { method: "POST", headers: bearer(token), body: JSON.stringify({ hex, confirmReserve: true }) }),
+  safeFreeze: (token: string, id: string, reason: string, sources: string[]) => request<{ txHash: string }>(`/api/admin/safe-passage/${id}/freeze`, { method: "POST", headers: bearer(token), body: JSON.stringify({ reason, sources }) }),
+  safeVerify: (token: string, id: string, body: unknown) => request<{ txHash: string }>(`/api/admin/safe-passage/${id}/verify`, { method: "POST", headers: bearer(token), body: JSON.stringify(body) }),
   adminCheck: (token: string) => request<{ ok: boolean }>("/api/admin/check", { headers: bearer(token) }),
   voidMarket: (token: string, marketId: string, reason: string) =>
     request<{ txHash: string }>(`/api/admin/markets/${marketId}/void`, { method: "POST", headers: bearer(token), body: JSON.stringify({ reason }) }),

@@ -29,6 +29,11 @@ const Env = z.object({
   ROUTE_BASE_URL: z.string().default("https://api.adsbdb.com"),
   AERODATABOX_KEY: z.string().optional(),
   AERODATABOX_HOST: z.string().default("aerodatabox.p.rapidapi.com"),
+  /** Explicit opt-in; reserves are funded by operator actions, never by page views. */
+  SAFE_PASSAGE_ENABLED: bool,
+  SAFE_PASSAGE_RESERVE_ADA: z.coerce.number().int().min(1).max(1_000_000).default(1000),
+  SAFE_PASSAGE_MAX_OPEN: z.coerce.number().int().min(1).max(100).default(5),
+  SAFE_PASSAGE_MAX_STAKE_ADA: z.coerce.number().int().min(1).max(1_000_000).default(1000),
   SEED_ADA: z.coerce.number().default(20),
   SEED_ADA_CANCELLATION: z.coerce.number().default(100),
   FEE_BPS: z.coerce.number().int().min(0).max(1000).default(300),

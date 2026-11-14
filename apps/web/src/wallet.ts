@@ -54,7 +54,7 @@ export function browserWallets(): WalletOption[] {
 
 export async function connectBrowserWallet(id: string): Promise<AppWallet> {
   const w = window.cardano?.[id];
-  if (!w) throw new Error("Wallet not found");
+  if (!w) throw new Error("Wallet nicht gefunden");
   const cip = await w.enable();
   const networkId = await cip.getNetworkId();
   return {

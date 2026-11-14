@@ -4,21 +4,15 @@ import { CLOSE_LEAD_MIN, estimateEta } from "@flightradar/core/eta";
 import { distanceKm } from "@flightradar/core/geo";
 import { webcamFor } from "@flightradar/core/webcams";
 import { airportByIcao } from "@flightradar/core/airports";
-import { deathZoneAt } from "@flightradar/core/deathzones";
 import { useNow } from "../hooks";
 import { t } from "../i18n";
 import type { AircraftDetail, AircraftDto, MarketDto } from "../types";
-import { SafePassageCard } from "./SafePassageCard";
-import type { AppWallet } from "../wallet";
 import { LiveStream } from "./LiveStream";
 import { MarketCard, type MarketCardProps } from "./MarketCard";
 import { RulesPanel } from "./RulesPanel";
 
 export interface AircraftPanelProps {
   hex: string;
-  wallet: AppWallet | null;
-  operator: string | null;
-  onConnect: () => void;
   live: AircraftDto | undefined;
   detail: AircraftDetail | null;
   markets: MarketDto[];
@@ -67,6 +61,7 @@ export function AircraftPanel(p: AircraftPanelProps) {
   };
   // Use the detail only if it belongs to this aircraft (it loads asynchronously).
   const detail = p.detail?.aircraft.hex === p.hex ? p.detail : null;
+  // Never show the live data of a previously selected aircraft.
   const a = p.live?.hex === p.hex ? p.live : detail?.aircraft;
   const route = detail?.route ?? null;
   const origin = detail?.origin ?? airportByIcao(route?.origin ?? a?.origin) ?? null;
@@ -88,7 +83,7 @@ export function AircraftPanel(p: AircraftPanelProps) {
   // even when the market it created shows up in the list.
   const [engaged, setEngaged] = useState(false);
   useEffect(() => setEngaged(false), [p.hex]);
-  const wantPreview = (!landingMarket || engaged) && !!a?.airport && hasCam && !tooClose;
+  const wantPreview = (!landingMarket || engaged) && !!a?.airport && !tooClose;
   useEffect(() => {
     if (!wantPreview) {
       setPreview(null);
@@ -161,8 +156,8 @@ export function AircraftPanel(p: AircraftPanelProps) {
             <span className="code">{dest?.iata || destIcao || "–"}</span>
           </div>
           <div className="route2-names">
-            <span>{origin?.city || origin?.name || (route?.origin || a?.origin ? "Origin" : "Origin not reported")}</span>
-            <span>{dest?.city || dest?.name || (destIcao ? "Destination" : "Destination not reported")}</span>
+            <span>{origin?.city || origin?.name || "Origin"}</span>
+            <span>{dest?.city || dest?.name || "Destination"}</span>
           </div>
         </div>
 
@@ -180,8 +175,6 @@ export function AircraftPanel(p: AircraftPanelProps) {
             {p.arrivalNote}
           </div>
         )}
-
-        <SafePassageCard key={`${p.hex}:${p.wallet?.id ?? "none"}`} hex={p.hex} aircraft={a} wallet={p.wallet} operator={p.operator} onConnect={p.onConnect} />
 
         {sorted.filter((m) => !(showPreview && m.kind === "landing_before")).map((m) => (
           <MarketCard
@@ -213,7 +206,7 @@ export function AircraftPanel(p: AircraftPanelProps) {
             }}
           />
         ) : null}
-        {!landingMarket && !showPreview && !((a && deathZoneAt(a.lon, a.lat)) || !a?.airport) &&
+        {!landingMarket && !showPreview &&
           (a?.airport && !tooClose && previewLoading ? (
             <div className="pool-note">Loading the prediction …</div>
           ) : sorted.length === 0 ? (

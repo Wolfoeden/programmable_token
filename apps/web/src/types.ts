@@ -47,9 +47,6 @@ export interface AircraftDto {
   phase?: "landing" | "takeoff";
   airport?: string;
   origin?: string;
-  /** Over the red areas: route from the route database (ICAO), for the map lines. */
-  routeFrom?: string;
-  routeTo?: string;
   /** Destination confirmed (unambiguous); only confirmed flights take predictions. */
   confirmed?: boolean;
   flightNumber?: string;
@@ -196,20 +193,3 @@ export interface Portfolio {
 }
 
 export type { FlightRef, Question };
-
-
-export interface SafeMarketDto {
-  id: string; hex: string; zone: string; openedAt: number;
-  phase: "open" | "frozen" | "resolved" | "updating";
-  recoveryHold?: boolean;
-  chainState: "open" | "frozen" | "resolved";
-  odds: [string, string]; reserve: string; stakes: [string, string]; limits: [string, string]; minStake: string;
-  winner: 0 | 1 | null; evidenceHash: string | null; claimDeadline: number | null;
-  evidence: { reason: string; sources: string[]; winner?: 0 | 1 | null } | null;
-  criterion: string;
-}
-export interface SafeFlightResponse { enabled: boolean; market: SafeMarketDto | null; reservePerMarket?: string; previewLimits?: [string, string] }
-export interface SafeQuote { tx: string; payout: string; stake: string; fee: string; batcherFee: string; deposit: string; outcome: 0 | 1; marketId: string; hex: string; expiresAt: number }
-export interface SafePosition { market: SafeMarketDto; yes: string; no: string; claimable: string }
-
-export interface SafeOrder { txHash: string; outputIndex: number; marketId: string; outcome: number | null; stake: string; deadline: number }

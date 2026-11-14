@@ -22,18 +22,14 @@ import type { Route, RouteSource } from "../src/routes.js";
 import { Store } from "../src/store.js";
 import { Tracker } from "../src/tracker.js";
 import { ShadowLog } from "../src/shadow.js";
-import { DeathZoneTraffic } from "../src/deathZoneTraffic.js";
 import { CamTraffic } from "../src/traffic.js";
 
 class FakeAdsb implements AdsbSource {
   planes = new Map<string, Aircraft>();
-  failHex = false;
   async area() {
     return [...this.planes.values()];
   }
-  async areaStrict() { return this.area(); }
   async byHex(hexes: string[]) {
-    if (this.failHex) throw new Error("Hex request unavailable");
     return hexes.map((h) => this.planes.get(h)).filter((a): a is Aircraft => !!a);
   }
   track(hexes: string[]) {
@@ -60,7 +56,6 @@ let index: ChainIndex;
 let maker: MarketMaker;
 let tracker: Tracker;
 let traffic: CamTraffic;
-let deathZoneTraffic: DeathZoneTraffic;
 let oracle: Oracle;
 let batcher: Batcher;
 let marketId: string;
@@ -95,7 +90,6 @@ describe("server pipeline (emulator, fake flight data)", () => {
     const cfg = loadConfig({ DEMO: "1", ADMIN_TOKEN: "test-admin-token-123", DATA_DIR: mkdtempSync(join(tmpdir(), "frf-")) } as NodeJS.ProcessEnv);
     ctx = await createChain(cfg);
     adsb = new FakeAdsb();
-    deathZoneTraffic = new DeathZoneTraffic(adsb);
     const store = new Store(cfg.DATA_DIR);
     tracker = new Tracker(adsb);
     traffic = new CamTraffic(adsb, new FakeRoutes());
@@ -104,7 +98,7 @@ describe("server pipeline (emulator, fake flight data)", () => {
     oracle = new Oracle(ctx, tracker, undefined, store);
     batcher = new Batcher(ctx);
     shadow = new ShadowLog(cfg.DATA_DIR);
-    app = await buildApi({ deathZoneTraffic, cfg, ctx, index, adsb, routes: new FakeRoutes(), schedule: undefined, store, maker, traffic, tracker, shadow, oracle });
+    app = await buildApi({ cfg, ctx, index, adsb, routes: new FakeRoutes(), schedule: undefined, store, maker, traffic, tracker, shadow, oracle });
     // BA902 cruising towards Frankfurt, 600 km west of it.
     const now = ctx.now();
     // On the Frankfurt → London line (route checks need the aircraft on its leg).
@@ -314,34 +308,4 @@ describe("server pipeline (emulator, fake flight data)", () => {
     const claim = await call<{ value: string }>("POST", "/api/tx/claim", { ...wc, marketId: created.marketId });
     expect(claim.value).toBe("5000000"); // stake back 1:1
   });
-  it("includes regional overflights in the existing map API and opens existing aircraft details", async () => {
-    const regional: Aircraft = { hex: "abcdef", callsign: "TEST1", lat: 32, lon: 54, onGround: false, timestamp: Date.now() };
-    adsb.planes.set(regional.hex, regional);
-    await call("GET", "/api/aircraft"); // activate the viewer-driven regional scan
-    await deathZoneTraffic.step();
-    const result = await call<{ aircraft: Aircraft[]; regionalTraffic: { status: string } }>("GET", "/api/aircraft");
-    expect(result.aircraft.filter(a => a.hex === regional.hex)).toEqual([regional]);
-    expect(result.regionalTraffic.status).toBe("ok");
-    const detail = await call<{ aircraft: Aircraft }>("GET", "/api/aircraft/abcdef");
-    expect(detail.aircraft.hex).toBe(regional.hex);
-    adsb.planes.delete(regional.hex);
-  });
-
-  it("keeps regional flight details and destination when a hex lookup is empty or fails", async () => {
-    const regional: Aircraft = { hex: "fedabc", callsign: "SWR9", lat: 32, lon: 54, onGround: false, timestamp: Date.now() };
-    adsb.planes.set(regional.hex, regional);
-    await call("GET", "/api/aircraft");
-    // Discovery and known-position refresh alternate; ensure this flight was discovered.
-    await deathZoneTraffic.step(); await deathZoneTraffic.step();
-    adsb.planes.delete(regional.hex);
-    for (const failed of [false, true]) {
-      adsb.failHex = failed;
-      try {
-        const detail = await call<{ aircraft: Aircraft; route: { flightNumber: string }; origin: { icao: string }; destination: { icao: string } }>("GET", "/api/aircraft/fedabc");
-        expect(detail.aircraft.hex).toBe("fedabc"); expect(detail.aircraft.callsign).toBe("SWR9");
-        expect(detail.route.flightNumber).toBe("LX9"); expect(detail.destination.icao).toBe("KLAS"); expect(detail.origin.icao).toBe("KLAX");
-      } finally { adsb.failHex = false; }
-    }
-  });
-
 });

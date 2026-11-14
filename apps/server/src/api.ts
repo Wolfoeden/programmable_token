@@ -13,8 +13,8 @@ import {
   parimutuel,
   proposeCancellation,
   proposeDelayScheduled,
-  type FlightRef,
   type Aircraft,
+  type FlightRef,
 } from "@flightradar/core";
 import {
   buildBet,
@@ -36,9 +36,6 @@ import {
   positionsIn,
   unit,
 } from "@flightradar/chain";
-import type { DeathZoneTraffic } from "./deathZoneTraffic.js";
-import type { SafePassageService } from "./safePassage.js";
-import { registerSafePassageApi } from "./safePassageApi.js";
 import type { AdsbSource } from "./adsb.js";
 import { decodeUtxo, encodeUtxo, type ChainContext } from "./chain.js";
 import type { ChainIndex } from "./chainIndex.js";
@@ -64,8 +61,6 @@ export interface Services {
   store: Store;
   maker: MarketMaker;
   traffic: CamTraffic;
-  deathZoneTraffic?: DeathZoneTraffic;
-  safePassage?: SafePassageService;
   tracker: Tracker;
   /** Shadow log of model, outcomes and bets (optional in tests). */
   shadow?: ShadowLog;
@@ -140,7 +135,6 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
    */
   app.get("/api/aircraft", async () => {
     s.traffic.touch();
-    s.deathZoneTraffic?.touch();
     const counts = openMarketsByHex();
     const out = new Map<string, ReturnType<typeof aircraftDto>>();
     for (const a of s.tracker.allLatest()) out.set(a.hex, aircraftDto(a, counts.get(a.hex) ?? 0));
@@ -150,17 +144,8 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
       const { aircraft: _a, ...movement } = x;
       out.set(ac.hex, aircraftDto(ac, counts.get(ac.hex) ?? 0, movement));
     }
-    for (const a of s.deathZoneTraffic?.list() ?? []) {
-      const previous = out.get(a.hex);
-      const r = s.deathZoneTraffic!.routeOf(a);
-      // `routeFrom`/`routeTo`: where it comes from and goes to, for the map lines.
-      const dto = { ...aircraftDto(a, counts.get(a.hex) ?? 0), ...(r ? { routeFrom: r.from, routeTo: r.to, ...(r.flightNumber && !previous?.flightNumber ? { flightNumber: r.flightNumber } : {}) } : {}) };
-      if (!previous) out.set(a.hex, dto);
-      else if (a.timestamp > previous.timestamp) out.set(a.hex, { ...previous, ...dto });
-    }
     return {
       now: Date.now(),
-      regionalTraffic: s.deathZoneTraffic ? { status: s.deathZoneTraffic.status(), updatedAt: s.deathZoneTraffic.updatedAt || null } : null,
       status: s.traffic.status(),
       updatedAt: s.traffic.updatedAt || null,
       aircraft: [...out.values()],
@@ -179,16 +164,15 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
   app.get("/api/aircraft/:hex", async (req) => {
     const { hex } = z.object({ hex: z.string().regex(/^[0-9a-f]{6}$/i) }).parse(req.params);
     const key = hex.toLowerCase();
-    // A point query and a hex query can have different reception/cache states.
-    // Keep details available for an aircraft that is already visible on the map.
-    const candidates: Aircraft[] = [
-      ...s.tracker.allLatest(),
-      ...s.traffic.list().map(x => x.aircraft),
-      ...(s.deathZoneTraffic?.list() ?? []),
-    ];
-    try { candidates.push(...await s.adsb.byHex([key])); } catch { /* use the map snapshot */ }
-    const ac = candidates.filter(a => a.hex === key && Date.now() - a.timestamp <= 120_000)
-      .sort((a, b) => b.timestamp - a.timestamp)[0];
+    // A hex query can miss an aircraft the map already shows (different
+    // reception or cache): fall back to the freshest map position.
+    const candidates: Aircraft[] = [...s.tracker.allLatest(), ...s.traffic.list().map((x) => x.aircraft)];
+    try {
+      candidates.push(...(await s.adsb.byHex([key])));
+    } catch {
+      /* use the map snapshot */
+    }
+    const ac = candidates.filter((a) => a.hex === key && Date.now() - a.timestamp <= 120_000).sort((x, y) => y.timestamp - x.timestamp)[0];
     if (!ac) throw new HttpError(404, "aircraft_not_found");
     const route = ac.callsign ? await s.routes.lookup(ac.callsign).catch(() => null) : null;
     const markets = allMarketDtos().filter((m) => m.icao24.includes(ac.hex));
@@ -633,8 +617,6 @@ export async function buildApi(s: Services): Promise<FastifyInstance> {
   const auth = (req: FastifyRequest) => {
     if (!adminToken || req.headers.authorization !== `Bearer ${adminToken}`) throw new HttpError(401, "unauthorized", "Admin token missing or wrong");
   };
-
-  registerSafePassageApi(app, s.safePassage, walletLucid, auth, s.ctx);
 
   /** Check an admin token (the app's operator mode). */
   app.get("/api/admin/check", async (req) => {

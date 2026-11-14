@@ -1,6 +1,4 @@
 /** Entry point: wires data sources, chain, oracle, batcher and HTTP API. */
-import { DeathZoneTraffic } from "./deathZoneTraffic.js";
-import { SafePassageService } from "./safePassage.js";
 import { AdsbClient } from "./adsb.js";
 import { buildApi } from "./api.js";
 import { Batcher } from "./batcher.js";
@@ -33,8 +31,6 @@ async function main() {
   }
   const adsb = new AdsbClient(cfg.ADSB_BASE_URL, cfg.ADSB_FALLBACK_URL);
   const routes = new RouteClient(cfg.ROUTE_BASE_URL);
-  const deathZoneTraffic = new DeathZoneTraffic(adsb, routes);
-  const safePassage = new SafePassageService(cfg, ctx, adsb);
   const schedule: ScheduleProvider | undefined = cfg.AERODATABOX_KEY
     ? new AeroDataBox(cfg.AERODATABOX_KEY, cfg.AERODATABOX_HOST)
     : cfg.DEMO
@@ -52,7 +48,7 @@ async function main() {
   const batcher = new Batcher(ctx);
 
   await index.refresh();
-  const app = await buildApi({ cfg, ctx, index, adsb, routes, schedule, store, maker, traffic, tracker, shadow, oracle, deathZoneTraffic, safePassage });
+  const app = await buildApi({ cfg, ctx, index, adsb, routes, schedule, store, maker, traffic, tracker, shadow, oracle });
   await app.listen({ port: cfg.PORT, host: cfg.HOST });
   log.info(`listening on http://${cfg.HOST}:${cfg.PORT}`, { demo: cfg.DEMO, network: ctx.network, schedule: schedule?.name ?? "none" });
 
@@ -70,13 +66,11 @@ async function main() {
     setTimeout(run, everyMs).unref();
   };
   loop("index", 4000, () => index.maybeRefresh());
-  loop("deathzone-traffic", 2500, () => deathZoneTraffic.step());
   loop("traffic", 1500, () => traffic.step());
   loop("traffic-far", 1500, () => traffic.stepFar());
   loop("tracker", 10_000, () => tracker.poll());
   loop("tracker-final", 2000, () => tracker.pollFinal());
   loop("oracle", 15_000, () => oracle.tick(index.live));
-  loop("safe-passage-batcher", 10_000, () => safePassage.tick());
   loop("batcher", 10_000, () => batcher.tick(index.live, index.orders));
   loop("sweeper", 10 * 60_000, () => oracle.sweep(index.live));
   loop("seed-reclaim", 2 * 60_000, () => oracle.reclaimSeeds(index.live, (id) => index.isStale(id)));
